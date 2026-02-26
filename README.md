@@ -1,4 +1,4 @@
-# 📺 Bilibili Downloader (极简智能版)
+# 📺 Bilibili Downloader
 
 一个基于 Electron + [BBDown](https://github.com/nilaoda/BBDown) 构建的现代化 Bilibili 视频下载器。拥有极简的 UI 设计、智能的链接解析，以及强大的后台剪贴板静默下载能力。
 
@@ -16,48 +16,9 @@
 
 本项目独家实现了基于系统剪贴板的轻量级 **IPC 跨进程通信**，完美联动浏览器插件 **[Bilibili Enhancer](https://github.com/kingvamp/bilibili-enhancer)**：
 
-1. **触发下载**：当你在 Bilibili Enhancer 插件中触发下载时，插件会向剪贴板隐秘发送 `Enhancer_Download||[视频链接]` 指令。
-2. **静默执行**：本地下载器（即使已收起到系统托盘）将在毫秒级捕获该指令，**全程不弹窗、不打扰**，直接在后台静默建立下载队列。
-3. **状态回调**：下载成功结束后，下载器会自动向系统剪贴板反写 `Enhancer_Download_Finished||[视频链接]`。浏览器插件即可轮询捕获该信号，并在网页端向用户展示“下载完成”的状态更新。
+当你在 Bilibili Enhancer 插件中触发下载时,本地下载器直接在后台静默建立下载队列。下载成功结束后，浏览器插件会在网页端向用户展示“下载完成”的状态更新。
 
 > 真正实现了从浏览器到本地磁盘的“零感”下载工作流！
-
-## 🛠️ 安装与运行
-
-### 1. 环境依赖
-请确保你的电脑已安装 [Node.js](https://nodejs.org/)。
-
-### 2. 准备核心组件
-本软件依赖强大的 `BBDown` 核心进行下载解析。
-请在项目根目录下创建一个 `bin` 文件夹，并将以下两个文件放入其中：
-- `BBDown.exe` (前往 [BBDown Releases](https://github.com/nilaoda/BBDown/releases) 下载)
-- `ffmpeg.exe` (用于视频与双轨字幕的无损封装合并)
-
-**目录结构示例：**
-```text
-bilibili-downloader/
-├── bin/
-│   ├── BBDown.exe
-│   └── ffmpeg.exe
-├── src/
-├── package.json
-└── ...
-```
-
-### 3. 编译与运行
-克隆本项目后，在终端执行以下命令：
-
-```bash
-# 1. 安装基础依赖模块
-npm install
-
-# 2. 安装底层剪贴板事件驱动引擎 (用于实现毫秒级零延迟通信)
-npm install clipboard-event
-
-# 3. 编译 TypeScript 并启动程序
-npm run build
-npm start
-```
 
 ## ⚙️ 偏好设置
 
