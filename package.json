@@ -1,22 +1,53 @@
 {
   "name": "bilibili-downloader",
   "version": "1.0.0",
+  "description": "Bilibili Downloader by Enhancer",
+  "author": "kingvamp",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc",
     "start": "tsc && electron .",
-    "watch": "tsc -w"
+    "watch": "tsc -w",
+    "pack": "tsc && electron-builder --dir",
+    "dist": "tsc && electron-builder"
   },
   "devDependencies": {
     "@types/electron": "^1.6.10",
     "@types/node": "^20.11.0",
     "@types/qrcode": "^1.5.5",
     "electron": "^28.1.0",
+    "electron-builder": "^26.8.1",
     "typescript": "^5.3.3"
   },
   "dependencies": {
     "axios": "^1.6.5",
     "clipboard-event": "^1.6.0",
     "qrcode": "^1.5.3"
+  },
+  "build": {
+    "appId": "com.enhancer.bilibilidownloader",
+    "productName": "Bilibili Downloader",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "index.html",
+      "icon.ico",
+      "bin/**/*"
+    ],
+    "win": {
+      "icon": "icon.ico",
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Bilibili Downloader"
+    }
   }
 }
