@@ -1,0 +1,17 @@
+# Node 依赖
+node_modules/
+
+# 编译输出
+dist/
+
+# 你的个人隐私与下载内容 (绝不能泄露)
+cookie.txt
+downloads/
+
+# 操作系统生成的缓存文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
+npm-debug.log*
