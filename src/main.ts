@@ -219,8 +219,12 @@ ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSile
       if (urlObj.searchParams.has('vd_source')) urlObj.searchParams.delete('vd_source');
       finalUrl = urlObj.toString();
   } catch (e) {}
-
-  const downloaderPath = path.join(__dirname, '../bin', 'BBDown.exe');
+  //解决打包问题
+  const binDir = app.isPackaged 
+      ? path.join(process.resourcesPath, 'bin') 
+      : path.join(__dirname, '../bin');
+      
+  const downloaderPath = path.join(binDir, 'BBDown.exe');
   const workDir = downloadDir ? downloadDir : './downloads';
   const args = [ finalUrl, '--work-dir', workDir ];
 
