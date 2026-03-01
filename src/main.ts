@@ -4,6 +4,7 @@ import { spawn } from 'child_process';
 import axios from 'axios';
 import QRCode from 'qrcode';
 import fs from 'fs';
+import { autoUpdater } from 'electron-updater';
 
 const clipboardListener = require('clipboard-event');
 
@@ -107,6 +108,33 @@ app.whenReady().then(() => {
   createWindow();
   createTray();
   clipboardListener.startListening();
+
+  autoUpdater.autoDownload = true; 
+  autoUpdater.autoInstallOnAppQuit = true; 
+
+  autoUpdater.on('checking-for-update', () => {
+      mainWindow?.webContents.send('download-progress', '>>> 🔄 正在连接 GitHub 检测软件更新...\n');
+  });
+  
+  autoUpdater.on('update-available', (info) => {
+      mainWindow?.webContents.send('download-progress', `>>> ✨ 发现新版本 v${info.version}！正在后台静默下载，请稍候...\n`);
+  });
+  
+  autoUpdater.on('update-not-available', () => {
+      mainWindow?.webContents.send('download-progress', '>>> ✅ 当前软件已是最新版本。\n');
+  });
+  
+  autoUpdater.on('update-downloaded', () => {
+      mainWindow?.webContents.send('download-progress', '>>> 🎉 新版本后台下载完成！将在下次彻底退出并重启软件时自动完成升级。\n');
+  });
+
+  autoUpdater.on('error', (err) => {
+      mainWindow?.webContents.send('download-progress', `>>> ⚠️ 检查更新失败: ${err.message}\n`);
+  });
+
+  setTimeout(() => {
+      autoUpdater.checkForUpdatesAndNotify();
+  }, 3000);
 });
 
 app.on('will-quit', () => {
@@ -171,20 +199,16 @@ ipcMain.handle('check-login', async (event, qrcode_key) => {
     if (res.data.data.code === 0) {
       const cookies = res.headers['set-cookie'];
       if (cookies) {
-        const sessData = cookies.find((c: string) => c.includes('SESSDATA='));
-        if (sessData) {
-          sessionCookie = sessData.split(';')[0];
-          fs.writeFileSync(cookiePath, sessionCookie);
-          return { status: 'success' };
-        }
+        // 【关键修复一】拼接并保留完整的 Cookie，满足 B 站 WAF 防火墙校验！
+        sessionCookie = cookies.map((c: string) => c.split(';')[0]).join('; ');
+        fs.writeFileSync(cookiePath, sessionCookie);
+        return { status: 'success' };
       }
     } 
     return { status: res.data.data.code === 86090 ? 'scanned' : 'waiting' };
   } catch (error) { return { status: 'error' }; }
 });
 
-// === 核心下载逻辑 ===
-// 【修改】接收 isSilent 参数
 ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSilent) => {
   if (!rawUrl) return;
 
@@ -233,7 +257,6 @@ ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSile
   });
   
   child.on('close', (code) => {
-      // 【核心修改】如果这是一次“静默下载”任务，并且成功结束（code为0），则反向写入剪贴板指令
       if (isSilent && code === 0) {
           clipboard.writeText(`Enhancer_Download_Finished||${rawUrl}`);
       }

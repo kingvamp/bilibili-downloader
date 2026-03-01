@@ -22,24 +22,42 @@
   "dependencies": {
     "axios": "^1.6.5",
     "clipboard-event": "^1.6.0",
+    "electron-updater": "^6.8.3",
     "qrcode": "^1.5.3"
   },
   "build": {
     "appId": "com.enhancer.bilibilidownloader",
     "productName": "Bilibili Downloader",
+    "compression": "normal",
     "directories": {
       "output": "release"
     },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "kingvamp",
+        "repo": "bilibili-downloader"
+      }
+    ],
     "files": [
       "dist/**/*",
       "index.html",
-      "icon.ico",
-      "bin/**/*"
+      "icon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "bin",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "win": {
       "icon": "icon.ico",
       "target": [
-        "nsis"
+        "nsis",
+        "zip"
       ]
     },
     "nsis": {
