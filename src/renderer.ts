@@ -1,5 +1,4 @@
 interface IElectronAPI {
-    // 【修改】增加 isSilent 参数定义
     startDownload: (url: string, isBatch?: boolean, dlSub?: boolean, downloadDir?: string, isSilent?: boolean) => void;
     onProgress: (callback: (data: string) => void) => void;
     onComplete: (callback: (code: number) => void) => void;
@@ -44,6 +43,59 @@ document.addEventListener('DOMContentLoaded', () => {
     const browseBtn = document.getElementById('browseBtn') as HTMLButtonElement;
     const subCb = document.getElementById('subCb') as HTMLInputElement;
     const clipboardCb = document.getElementById('clipboardCb') as HTMLInputElement;
+
+    // === 【新增】前端任务队列系统 ===
+    let downloadQueue: { url: string, isSilent: boolean }[] = [];
+    let isDownloading = false;
+
+    // 队列处理引擎
+    function processQueue() {
+        if (downloadQueue.length === 0) {
+            isDownloading = false;
+            if (logDiv) {
+                logDiv.innerText += `\n>>> 🟢 所有队列任务已执行完毕，等待新任务...\n`;
+                logDiv.scrollTop = logDiv.scrollHeight;
+            }
+            return;
+        }
+
+        isDownloading = true;
+        const task = downloadQueue.shift();
+        if (!task) return;
+
+        let inputUrl = task.url;
+        let isBatch = false;
+        const isDlSub = localStorage.getItem('dlSub') === 'true';
+        const currentDir = localStorage.getItem('downloadDir') || './downloads';
+
+        // 智能参数解析
+        if (/^\d+$/.test(inputUrl)) {
+            inputUrl = `https://www.bilibili.com/list/ml${inputUrl}`;
+            isBatch = true;
+            if(logDiv && !task.isSilent) logDiv.innerText += `\n>>> 🤖 智能识别：纯数字 ID，转换为播单链接...\n`;
+        } 
+        else if (
+            inputUrl.includes('list/ml') || 
+            inputUrl.includes('favlist') || 
+            inputUrl.includes('fid=') || 
+            inputUrl.includes('collection') || 
+            inputUrl.includes('/series/') || 
+            inputUrl.includes('sid=')
+        ) {
+            isBatch = true;
+            if(logDiv && !task.isSilent) logDiv.innerText += `\n>>> 🤖 智能识别：检测到列表特征...\n`;
+        }
+
+        if (logDiv) {
+            logDiv.innerText += `\n>>> 🚀 开始处理队列任务: ${inputUrl}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // 发送给后端真正执行
+        window.api.startDownload(inputUrl, isBatch, isDlSub, currentDir, task.isSilent);
+    }
+
+    // ==========================================
 
     function loadRealSettingsToUI() {
         const savedDir = localStorage.getItem('downloadDir') || './downloads';
@@ -162,61 +214,41 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.api.onSilentClipboardMatch((url) => {
         if (logDiv) {
-            logDiv.innerText += `\n>>> 🤫 捕获到外部静默下载指令，正在后台开始下载: ${url}\n`;
+            logDiv.innerText += `\n>>> 🤫 捕获到外部静默下载指令，已加入队列: ${url}\n`;
             logDiv.scrollTop = logDiv.scrollHeight;
         }
         
-        let isBatch = false;
-        let inputUrl = url;
-        const isDlSub = localStorage.getItem('dlSub') === 'true';
-        const currentDir = localStorage.getItem('downloadDir') || './downloads';
-
-        if (/^\d+$/.test(inputUrl)) {
-            inputUrl = `https://www.bilibili.com/list/ml${inputUrl}`;
-            isBatch = true;
-        } 
-        else if (
-            inputUrl.includes('list/ml') || 
-            inputUrl.includes('favlist') || 
-            inputUrl.includes('fid=') || 
-            inputUrl.includes('collection') || 
-            inputUrl.includes('/series/') || 
-            inputUrl.includes('sid=')
-        ) {
-            isBatch = true;
+        // 【修改】静默指令也推入队列
+        downloadQueue.push({ url: url, isSilent: true });
+        if (!isDownloading) {
+            processQueue();
         }
-
-        // 【修改】传入 isSilent = true
-        window.api.startDownload(inputUrl, isBatch, isDlSub, currentDir, true);
     });
 
+    // === 【修改】重构手动点击下载按钮逻辑 ===
     downloadBtn?.addEventListener('click', () => {
-        let inputUrl = urlInput?.value.trim();
-        if (!inputUrl) return alert("请在上方输入框内粘贴链接");
+        const rawText = urlInput?.value.trim();
+        if (!rawText) return alert("请在上方输入框内粘贴链接");
 
-        let isBatch = false;
-        const isDlSub = localStorage.getItem('dlSub') === 'true';
-        const currentDir = localStorage.getItem('downloadDir') || './downloads';
+        // 使用正则切分空白字符（包含空格、回车、换行），并过滤掉空行
+        const urls = rawText.split(/[\s\n\r]+/).filter(u => u.length > 0);
 
-        if (/^\d+$/.test(inputUrl)) {
-            inputUrl = `https://www.bilibili.com/list/ml${inputUrl}`;
-            isBatch = true;
-            if(logDiv) logDiv.innerText += `\n>>> 🤖 智能识别：纯数字 ID，转换为播单链接...\n`;
-        } 
-        else if (
-            inputUrl.includes('list/ml') || 
-            inputUrl.includes('favlist') || 
-            inputUrl.includes('fid=') || 
-            inputUrl.includes('collection') || 
-            inputUrl.includes('/series/') || 
-            inputUrl.includes('sid=')
-        ) {
-            isBatch = true;
-            if(logDiv) logDiv.innerText += `\n>>> 🤖 智能识别：检测到列表特征...\n`;
-        } 
+        urls.forEach(url => {
+            downloadQueue.push({ url: url, isSilent: false });
+        });
 
-        // 【修改】普通点击，传入 isSilent = false
-        window.api.startDownload(inputUrl, isBatch, isDlSub, currentDir, false);
+        if (logDiv) {
+            logDiv.innerText += `\n>>> 📥 成功切分！已将 ${urls.length} 个任务加入下载队列...\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        // 填入后自动清空输入框，方便下次无缝输入
+        if (urlInput) urlInput.value = '';
+
+        // 如果机器空闲，立刻启动队列
+        if (!isDownloading) {
+            processQueue();
+        }
     });
 
     window.api.onProgress((data) => {
@@ -244,8 +276,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.api.onComplete((code) => {
         if(logDiv) {
-            logDiv.innerText += `\n====== 结束 (Code: ${code}) ======\n`;
+            logDiv.innerText += `\n====== 当前任务结束 (Code: ${code}) ======\n`;
             logDiv.scrollTop = logDiv.scrollHeight;
         }
+        
+        // 【核心】当前任务结束后，自动启动接力赛，拉起队列中的下一个任务！
+        processQueue();
     });
 });
