@@ -20,6 +20,11 @@ contextBridge.exposeInMainWorld('api', {
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   setClipboardMonitor: (state: boolean) => ipcRenderer.send('set-clipboard-monitor', state),
   setCloseToTray: (state: boolean) => ipcRenderer.send('set-close-to-tray', state),
+  setNotifyState: (state: boolean) => ipcRenderer.send('set-notify-state', state),
+  setSoundState: (state: boolean) => ipcRenderer.send('set-sound-state', state),
+  
+  // 【新增】通知后端整个队列已全部完成
+  notifyQueueDone: () => ipcRenderer.send('queue-finished'),
   
   onClipboardMatch: (callback: (url: string) => void) => {
     ipcRenderer.removeAllListeners('clipboard-match');

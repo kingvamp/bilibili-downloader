@@ -390,7 +390,7 @@
         </div>
     </div>
     <div id="settingsModal" class="modal-overlay">
-        <div class="modal-content" style="width: 380px;">
+        <div class="modal-content" style="width: 380px; height: 420px; overflow-y: auto;">
             <button class="modal-close-icon" id="closeSettingsIcon" title="关闭且不保存">
                 <svg viewBox="0 0 10 10">
                     <path d="M10 1L9 0 5 4 1 0 0 1l4 4-4 4 1 1 4-4 4 4 1-1-4-4z" />
@@ -423,6 +423,16 @@
             <div class="setting-item" style="margin-top: 15px;">
                 <label class="option-label" title="关闭主界面时，隐藏到系统托盘而不是完全退出程序">
                     <input type="checkbox" id="trayCb"> 点击关闭按钮时隐藏到系统托盘
+                </label>
+            </div>
+            <div class="setting-item" style="margin-top: 15px;">
+                <label class="option-label" title="每个下载任务完成后，在屏幕右下角弹出原生提示">
+                    <input type="checkbox" id="notifyCb"> 任务完成时弹出系统横幅通知
+                </label>
+            </div>
+            <div class="setting-item" style="margin-top: 15px;">
+                <label class="option-label" title="每个下载任务完成后，播放系统提示音 '叮' 提醒">
+                    <input type="checkbox" id="soundCb"> 任务完成时播放系统提示音
                 </label>
             </div>
             <div style="margin-top: 30px;">

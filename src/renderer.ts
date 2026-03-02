@@ -9,6 +9,10 @@ interface IElectronAPI {
     selectFolder: () => Promise<string | null>;
     setClipboardMonitor: (state: boolean) => void;
     setCloseToTray: (state: boolean) => void;
+    setNotifyState: (state: boolean) => void;
+    setSoundState: (state: boolean) => void;
+    notifyQueueDone: () => void; // 【新增】
+    
     onClipboardMatch: (callback: (url: string) => void) => void;
     onSilentClipboardMatch: (callback: (url: string) => void) => void; 
     onOpenSettings: (callback: () => void) => void;
@@ -46,13 +50,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const clipboardCb = document.getElementById('clipboardCb') as HTMLInputElement;
     const mtCb = document.getElementById('mtCb') as HTMLInputElement;
     const trayCb = document.getElementById('trayCb') as HTMLInputElement;
+    const notifyCb = document.getElementById('notifyCb') as HTMLInputElement;
+    const soundCb = document.getElementById('soundCb') as HTMLInputElement;
 
-    // === 任务队列引擎 ===
     let downloadQueue: { url: string, isSilent: boolean }[] = [];
     let isDownloading = false;
 
     function processQueue() {
         if (downloadQueue.length === 0) {
+            // 【核心修改】如果之前处于下载状态，现在队列空了，说明一整批全部下完了！
+            if (isDownloading) {
+                window.api.notifyQueueDone(); 
+            }
+            
             isDownloading = false;
             if (logDiv) {
                 logDiv.innerText += `\n>>> 🟢 所有队列任务已执行完毕，等待新任务...\n`;
@@ -102,17 +112,26 @@ document.addEventListener('DOMContentLoaded', () => {
         const savedSub = localStorage.getItem('dlSub') === 'true'; 
         const savedMt = localStorage.getItem('multiThread') === 'true'; 
         const savedTray = localStorage.getItem('closeToTray') !== 'false'; 
+        const savedNotify = localStorage.getItem('notifyState') !== 'false'; 
+        const savedSound = localStorage.getItem('soundState') === 'true';    
 
         if (dirInput) dirInput.value = savedDir;
         if (subCb) subCb.checked = savedSub;
         if (clipboardCb) clipboardCb.checked = savedClipboard;
         if (mtCb) mtCb.checked = savedMt;
         if (trayCb) trayCb.checked = savedTray; 
+        if (notifyCb) notifyCb.checked = savedNotify;
+        if (soundCb) soundCb.checked = savedSound;
     }
 
     loadRealSettingsToUI();
     const initialTray = localStorage.getItem('closeToTray') !== 'false';
+    const initialNotify = localStorage.getItem('notifyState') !== 'false';
+    const initialSound = localStorage.getItem('soundState') === 'true';
+    
     window.api.setCloseToTray(initialTray);
+    window.api.setNotifyState(initialNotify);
+    window.api.setSoundState(initialSound);
     
     if (localStorage.getItem('clipboardMonitor') === 'true') {
         window.api.setClipboardMonitor(true);
@@ -146,15 +165,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const newClipboard = clipboardCb?.checked || false;
         const newMt = mtCb?.checked || false; 
         const newTray = trayCb?.checked ?? true; 
+        const newNotify = notifyCb?.checked ?? true;
+        const newSound = soundCb?.checked ?? false;
 
         const oldClipboard = localStorage.getItem('clipboardMonitor') === 'true';
         const oldTray = localStorage.getItem('closeToTray') !== 'false'; 
+        const oldNotify = localStorage.getItem('notifyState') !== 'false';
+        const oldSound = localStorage.getItem('soundState') === 'true';
 
         localStorage.setItem('downloadDir', newDir);
         localStorage.setItem('dlSub', String(newSub));
         localStorage.setItem('clipboardMonitor', String(newClipboard));
         localStorage.setItem('multiThread', String(newMt)); 
         localStorage.setItem('closeToTray', String(newTray)); 
+        localStorage.setItem('notifyState', String(newNotify));
+        localStorage.setItem('soundState', String(newSound));
 
         if (oldClipboard !== newClipboard) {
             window.api.setClipboardMonitor(newClipboard);
@@ -164,9 +189,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (oldTray !== newTray) {
-            window.api.setCloseToTray(newTray);
-        }
+        if (oldTray !== newTray) window.api.setCloseToTray(newTray);
+        if (oldNotify !== newNotify) window.api.setNotifyState(newNotify);
+        if (oldSound !== newSound) window.api.setSoundState(newSound);
 
         if(settingsModal) settingsModal.style.display = 'none';
     });

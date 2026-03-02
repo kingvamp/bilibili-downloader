@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Tray, Menu, clipboard, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, Tray, Menu, clipboard, dialog, Notification, shell } from 'electron';
 import path from 'path';
 import { spawn } from 'child_process';
 import axios from 'axios';
@@ -17,6 +17,8 @@ let isNormalClipboardMonitoring = false;
 let lastClipboardText = '';
 let isQuitting = false; 
 let isCloseToTray = true; 
+let isNotifyEnabled = true; 
+let isSoundEnabled = false; 
 
 function loadCookie(): void {
   try {
@@ -41,6 +43,10 @@ function createWindow(): void {
   });
 
   mainWindow.loadFile(path.join(__dirname, '../index.html'));
+
+  mainWindow.on('focus', () => {
+      mainWindow?.flashFrame(false);
+  });
 
   mainWindow.on('close', (event) => {
     if (!isQuitting && isCloseToTray) {
@@ -105,6 +111,9 @@ clipboardListener.on('change', () => {
 });
 
 app.whenReady().then(() => {
+  // 【核心修改】强制注册 App ID，打破 Windows 的通知拦截拦截
+  app.setAppUserModelId('com.enhancer.bilibilidownloader');
+
   loadCookie();
   createWindow();
   createTray();
@@ -166,6 +175,32 @@ ipcMain.on('set-clipboard-monitor', (event, state) => {
 
 ipcMain.on('set-close-to-tray', (event, state) => {
   isCloseToTray = state;
+});
+
+ipcMain.on('set-notify-state', (event, state) => {
+  isNotifyEnabled = state;
+});
+ipcMain.on('set-sound-state', (event, state) => {
+  isSoundEnabled = state;
+});
+
+// 【新增】接收前端传来的“全部队列下载完成”信号
+ipcMain.on('queue-finished', () => {
+  if (isNotifyEnabled && Notification.isSupported()) {
+      new Notification({
+          title: '🎉 所有任务已下载完成',
+          body: '您的批量下载队列已全部处理完毕！',
+          icon: path.join(__dirname, '../icon.ico')
+      }).show();
+  }
+
+  if (isSoundEnabled) {
+      shell.beep();
+  }
+
+  if (mainWindow && !mainWindow.isFocused()) {
+      mainWindow.flashFrame(true);
+  }
 });
 
 ipcMain.handle('select-folder', async () => {
@@ -266,7 +301,8 @@ ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSile
   });
   
   child.on('close', (code) => {
-      if (isSilent && code === 0) {
+      // 【修改】只保留静默剪贴板反写的逻辑，将通知外移
+      if (code === 0 && isSilent) {
           clipboard.writeText(`Enhancer_Download_Finished||${rawUrl}`);
       }
       event.sender.send('download-complete', code);
