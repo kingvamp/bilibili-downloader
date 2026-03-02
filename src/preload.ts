@@ -1,9 +1,8 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
-  // 【修改】增加 isSilent 参数
-  startDownload: (url: string, isBatch: boolean = false, dlSub: boolean = false, downloadDir: string = '', isSilent: boolean = false) => 
-      ipcRenderer.send('start-download', url, isBatch, dlSub, downloadDir, isSilent),
+  startDownload: (url: string, isBatch: boolean = false, dlSub: boolean = false, downloadDir: string = '', isSilent: boolean = false, isMultiThread: boolean = false) => 
+      ipcRenderer.send('start-download', url, isBatch, dlSub, downloadDir, isSilent, isMultiThread),
   
   onProgress: (callback: (data: string) => void) => {
     ipcRenderer.removeAllListeners('download-progress');
@@ -20,6 +19,7 @@ contextBridge.exposeInMainWorld('api', {
   
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   setClipboardMonitor: (state: boolean) => ipcRenderer.send('set-clipboard-monitor', state),
+  setCloseToTray: (state: boolean) => ipcRenderer.send('set-close-to-tray', state),
   
   onClipboardMatch: (callback: (url: string) => void) => {
     ipcRenderer.removeAllListeners('clipboard-match');

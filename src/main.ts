@@ -16,6 +16,7 @@ const cookiePath = path.join(app.getPath('userData'), 'cookie.txt');
 let isNormalClipboardMonitoring = false; 
 let lastClipboardText = '';
 let isQuitting = false; 
+let isCloseToTray = true; 
 
 function loadCookie(): void {
   try {
@@ -42,7 +43,7 @@ function createWindow(): void {
   mainWindow.loadFile(path.join(__dirname, '../index.html'));
 
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
+    if (!isQuitting && isCloseToTray) {
       event.preventDefault(); 
       mainWindow?.hide();     
     }
@@ -148,11 +149,23 @@ ipcMain.on('window-max', () => {
   if (mainWindow?.isMaximized()) mainWindow.unmaximize();
   else mainWindow?.maximize();
 });
-ipcMain.on('window-close', () => mainWindow?.hide());
+
+ipcMain.on('window-close', () => {
+  if (isCloseToTray) {
+    mainWindow?.hide(); 
+  } else {
+    isQuitting = true;  
+    app.quit();         
+  }
+});
 
 ipcMain.on('set-clipboard-monitor', (event, state) => {
   isNormalClipboardMonitoring = state;
   if (state) lastClipboardText = '';
+});
+
+ipcMain.on('set-close-to-tray', (event, state) => {
+  isCloseToTray = state;
 });
 
 ipcMain.handle('select-folder', async () => {
@@ -199,7 +212,6 @@ ipcMain.handle('check-login', async (event, qrcode_key) => {
     if (res.data.data.code === 0) {
       const cookies = res.headers['set-cookie'];
       if (cookies) {
-        // 【关键修复一】拼接并保留完整的 Cookie，满足 B 站 WAF 防火墙校验！
         sessionCookie = cookies.map((c: string) => c.split(';')[0]).join('; ');
         fs.writeFileSync(cookiePath, sessionCookie);
         return { status: 'success' };
@@ -209,41 +221,34 @@ ipcMain.handle('check-login', async (event, qrcode_key) => {
   } catch (error) { return { status: 'error' }; }
 });
 
-ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSilent) => {
+ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSilent, isMultiThread) => {
   if (!rawUrl) return;
 
-  let finalUrl = rawUrl;
-  try {
-      const urlObj = new URL(rawUrl);
-      if (urlObj.searchParams.has('p')) urlObj.searchParams.delete('p');
-      if (urlObj.searchParams.has('vd_source')) urlObj.searchParams.delete('vd_source');
-      finalUrl = urlObj.toString();
-  } catch (e) {}
-  //解决打包问题
   const binDir = app.isPackaged 
       ? path.join(process.resourcesPath, 'bin') 
       : path.join(__dirname, '../bin');
       
   const downloaderPath = path.join(binDir, 'BBDown.exe');
   const workDir = downloadDir ? downloadDir : './downloads';
-  const args = [ finalUrl, '--work-dir', workDir ];
+  const args = [ rawUrl, '--work-dir', workDir ];
 
   if (!dlSub) {
       args.push('--skip-subtitle');
-  } else {
-      args.push('--skip-ai', 'false');
-      event.sender.send('download-progress', `>>> 📝 开启全量字幕下载...\n`);
+  } 
+
+  if (isMultiThread) {
+      args.push('-mt');
+      event.sender.send('download-progress', `>>> ⚡ 已开启多线程分块下载，全力加速中...\n`);
   }
 
   if (isBatch) {
       args.push('--file-pattern', '<pageTitle> [<bvid>]');
       args.push('--multi-file-pattern', '<pageTitle> [<bvid>]');
+      args.push('-p', 'ALL'); 
   } else {
       args.push('--file-pattern', '<videoTitle> [<bvid>]');
       args.push('--multi-file-pattern', '<videoTitle> - P<pageNumberWithZero> <pageTitle> [<bvid>]');
   }
-
-  args.push('-p', 'ALL'); 
 
   if (sessionCookie) args.push('-c', sessionCookie);
 

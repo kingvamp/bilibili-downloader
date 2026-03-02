@@ -255,7 +255,6 @@
             border-radius: 8px;
         }
 
-        /* 增加相对定位，方便绝对定位右上角的X按钮 */
         .modal-content {
             background: #252526;
             padding: 25px;
@@ -266,7 +265,6 @@
             position: relative;
         }
 
-        /* 【新增】弹窗右上角关闭按钮样式 */
         .modal-close-icon {
             position: absolute;
             top: 12px;
@@ -369,21 +367,19 @@
                 <button class="win-btn" id="maxBtn" title="最大化"><svg viewBox="0 0 10 10">
                         <path d="M0 0h10v10H0V0zm1 1v8h8V1H1z" />
                     </svg></button>
-                <button class="win-btn close-btn" id="closeBtn" title="关闭到系统托盘"><svg viewBox="0 0 10 10">
+                <button class="win-btn close-btn" id="closeBtn" title="关闭"><svg viewBox="0 0 10 10">
                         <path d="M10 1L9 0 5 4 1 0 0 1l4 4-4 4 1 1 4-4 4 4 1-1-4-4z" />
                     </svg></button>
             </div>
         </div>
     </header>
-
     <main>
         <div class="input-group">
-            <input type="text" id="urlInput" placeholder="粘贴视频链接、收藏夹链接 或 播单数字ID">
+            <input type="text" id="urlInput" placeholder="粘贴视频链接、收藏夹链接 或 播单数字ID (支持多行批量)">
             <button id="downloadBtn" class="download-btn">解析并下载</button>
         </div>
         <div id="log">等待任务...</div>
     </main>
-
     <div id="loginModal" class="modal-overlay">
         <div class="modal-content">
             <h3 style="margin-top: 0;">📱 扫码登录</h3>
@@ -393,7 +389,6 @@
                 onclick="closeModal()">关闭</button>
         </div>
     </div>
-
     <div id="settingsModal" class="modal-overlay">
         <div class="modal-content" style="width: 380px;">
             <button class="modal-close-icon" id="closeSettingsIcon" title="关闭且不保存">
@@ -401,9 +396,7 @@
                     <path d="M10 1L9 0 5 4 1 0 0 1l4 4-4 4 1 1 4-4 4 4 1-1-4-4z" />
                 </svg>
             </button>
-
             <h3 style="margin-top: 0; margin-bottom: 20px; color: #fff;">⚙️ 偏好设置</h3>
-
             <div class="setting-item">
                 <span class="setting-title">默认下载保存目录</span>
                 <div style="display: flex; gap: 8px;">
@@ -412,25 +405,31 @@
                     <button id="browseBtn" class="download-btn secondary-btn">更改</button>
                 </div>
             </div>
-
             <div class="setting-item" style="margin-top: 25px;">
                 <label class="option-label" title="开启后，复制B站链接会自动唤醒窗口并填入">
                     <input type="checkbox" id="clipboardCb"> 自动监听并提取剪贴板链接
                 </label>
             </div>
-
             <div class="setting-item" style="margin-top: 15px;">
                 <label class="option-label" title="同时下载所有外挂字幕文件并封装">
                     <input type="checkbox" id="subCb"> 下载并封装双轨字幕 (人工+AI)
                 </label>
             </div>
-
+            <div class="setting-item" style="margin-top: 15px;">
+                <label class="option-label" title="开启底层多线程分块下载，大幅提升下载速度 (可能会增加网络负担)">
+                    <input type="checkbox" id="mtCb"> 开启多线程并发加速 (-mt)
+                </label>
+            </div>
+            <div class="setting-item" style="margin-top: 15px;">
+                <label class="option-label" title="关闭主界面时，隐藏到系统托盘而不是完全退出程序">
+                    <input type="checkbox" id="trayCb"> 点击关闭按钮时隐藏到系统托盘
+                </label>
+            </div>
             <div style="margin-top: 30px;">
                 <button class="modal-btn btn-save" id="saveSettingsBtn" style="width: 100%;">保存并应用</button>
             </div>
         </div>
     </div>
-
     <script src="./dist/renderer.js"></script>
 </body>
 

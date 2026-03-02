@@ -1,5 +1,5 @@
 interface IElectronAPI {
-    startDownload: (url: string, isBatch?: boolean, dlSub?: boolean, downloadDir?: string, isSilent?: boolean) => void;
+    startDownload: (url: string, isBatch?: boolean, dlSub?: boolean, downloadDir?: string, isSilent?: boolean, isMultiThread?: boolean) => void;
     onProgress: (callback: (data: string) => void) => void;
     onComplete: (callback: (code: number) => void) => void;
     getQRCode: () => Promise<{ success: boolean; imgData?: string; key?: string; error?: string }>;
@@ -8,6 +8,7 @@ interface IElectronAPI {
     
     selectFolder: () => Promise<string | null>;
     setClipboardMonitor: (state: boolean) => void;
+    setCloseToTray: (state: boolean) => void;
     onClipboardMatch: (callback: (url: string) => void) => void;
     onSilentClipboardMatch: (callback: (url: string) => void) => void; 
     onOpenSettings: (callback: () => void) => void;
@@ -43,12 +44,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const browseBtn = document.getElementById('browseBtn') as HTMLButtonElement;
     const subCb = document.getElementById('subCb') as HTMLInputElement;
     const clipboardCb = document.getElementById('clipboardCb') as HTMLInputElement;
+    const mtCb = document.getElementById('mtCb') as HTMLInputElement;
+    const trayCb = document.getElementById('trayCb') as HTMLInputElement;
 
-    // === 【新增】前端任务队列系统 ===
+    // === 任务队列引擎 ===
     let downloadQueue: { url: string, isSilent: boolean }[] = [];
     let isDownloading = false;
 
-    // 队列处理引擎
     function processQueue() {
         if (downloadQueue.length === 0) {
             isDownloading = false;
@@ -67,8 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let isBatch = false;
         const isDlSub = localStorage.getItem('dlSub') === 'true';
         const currentDir = localStorage.getItem('downloadDir') || './downloads';
+        const isMt = localStorage.getItem('multiThread') === 'true';
 
-        // 智能参数解析
         if (/^\d+$/.test(inputUrl)) {
             inputUrl = `https://www.bilibili.com/list/ml${inputUrl}`;
             isBatch = true;
@@ -91,23 +93,27 @@ document.addEventListener('DOMContentLoaded', () => {
             logDiv.scrollTop = logDiv.scrollHeight;
         }
 
-        // 发送给后端真正执行
-        window.api.startDownload(inputUrl, isBatch, isDlSub, currentDir, task.isSilent);
+        window.api.startDownload(inputUrl, isBatch, isDlSub, currentDir, task.isSilent, isMt);
     }
-
-    // ==========================================
 
     function loadRealSettingsToUI() {
         const savedDir = localStorage.getItem('downloadDir') || './downloads';
         const savedClipboard = localStorage.getItem('clipboardMonitor') === 'true'; 
         const savedSub = localStorage.getItem('dlSub') === 'true'; 
+        const savedMt = localStorage.getItem('multiThread') === 'true'; 
+        const savedTray = localStorage.getItem('closeToTray') !== 'false'; 
 
         if (dirInput) dirInput.value = savedDir;
         if (subCb) subCb.checked = savedSub;
         if (clipboardCb) clipboardCb.checked = savedClipboard;
+        if (mtCb) mtCb.checked = savedMt;
+        if (trayCb) trayCb.checked = savedTray; 
     }
 
     loadRealSettingsToUI();
+    const initialTray = localStorage.getItem('closeToTray') !== 'false';
+    window.api.setCloseToTray(initialTray);
+    
     if (localStorage.getItem('clipboardMonitor') === 'true') {
         window.api.setClipboardMonitor(true);
         if (logDiv) logDiv.innerText += `>>> 📋 剪贴板监听已按偏好设置自动开启\n`;
@@ -138,12 +144,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const newDir = dirInput?.value || './downloads';
         const newSub = subCb?.checked || false;
         const newClipboard = clipboardCb?.checked || false;
+        const newMt = mtCb?.checked || false; 
+        const newTray = trayCb?.checked ?? true; 
 
         const oldClipboard = localStorage.getItem('clipboardMonitor') === 'true';
+        const oldTray = localStorage.getItem('closeToTray') !== 'false'; 
 
         localStorage.setItem('downloadDir', newDir);
         localStorage.setItem('dlSub', String(newSub));
         localStorage.setItem('clipboardMonitor', String(newClipboard));
+        localStorage.setItem('multiThread', String(newMt)); 
+        localStorage.setItem('closeToTray', String(newTray)); 
 
         if (oldClipboard !== newClipboard) {
             window.api.setClipboardMonitor(newClipboard);
@@ -151,6 +162,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 logDiv.innerText += newClipboard ? `\n>>> 📋 剪贴板监听已开启。\n` : `\n>>> ⏸️ 剪贴板监听已关闭。\n`;
                 logDiv.scrollTop = logDiv.scrollHeight;
             }
+        }
+
+        if (oldTray !== newTray) {
+            window.api.setCloseToTray(newTray);
         }
 
         if(settingsModal) settingsModal.style.display = 'none';
@@ -218,19 +233,16 @@ document.addEventListener('DOMContentLoaded', () => {
             logDiv.scrollTop = logDiv.scrollHeight;
         }
         
-        // 【修改】静默指令也推入队列
         downloadQueue.push({ url: url, isSilent: true });
         if (!isDownloading) {
             processQueue();
         }
     });
 
-    // === 【修改】重构手动点击下载按钮逻辑 ===
     downloadBtn?.addEventListener('click', () => {
         const rawText = urlInput?.value.trim();
         if (!rawText) return alert("请在上方输入框内粘贴链接");
 
-        // 使用正则切分空白字符（包含空格、回车、换行），并过滤掉空行
         const urls = rawText.split(/[\s\n\r]+/).filter(u => u.length > 0);
 
         urls.forEach(url => {
@@ -242,10 +254,8 @@ document.addEventListener('DOMContentLoaded', () => {
             logDiv.scrollTop = logDiv.scrollHeight;
         }
 
-        // 填入后自动清空输入框，方便下次无缝输入
         if (urlInput) urlInput.value = '';
 
-        // 如果机器空闲，立刻启动队列
         if (!isDownloading) {
             processQueue();
         }
@@ -279,8 +289,6 @@ document.addEventListener('DOMContentLoaded', () => {
             logDiv.innerText += `\n====== 当前任务结束 (Code: ${code}) ======\n`;
             logDiv.scrollTop = logDiv.scrollHeight;
         }
-        
-        // 【核心】当前任务结束后，自动启动接力赛，拉起队列中的下一个任务！
         processQueue();
     });
 });
