@@ -16,6 +16,8 @@ contextBridge.exposeInMainWorld('api', {
   getQRCode: () => ipcRenderer.invoke('get-qrcode'),
   checkLogin: (key: string) => ipcRenderer.invoke('check-login', key),
   getUserInfo: () => ipcRenderer.invoke('get-user-info'),
+  getDefaultFavId: () => ipcRenderer.invoke('get-default-fav-id'),
+  openExternal: (url: string) => ipcRenderer.send('open-external', url),
   
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   setClipboardMonitor: (state: boolean) => ipcRenderer.send('set-clipboard-monitor', state),

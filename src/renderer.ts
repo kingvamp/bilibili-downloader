@@ -4,7 +4,9 @@ interface IElectronAPI {
     onComplete: (callback: (code: number) => void) => void;
     getQRCode: () => Promise<{ success: boolean; imgData?: string; key?: string; error?: string }>;
     checkLogin: (key: string) => Promise<{ status: string; msg?: string }>;
-    getUserInfo: () => Promise<{ isLogin: boolean; uname?: string; face?: string }>;
+    getUserInfo: () => Promise<{ isLogin: boolean; uname?: string; face?: string; mid?: number }>;
+    getDefaultFavId: () => Promise<number | null>;
+    openExternal: (url: string) => void;
     
     selectFolder: () => Promise<string | null>;
     setClipboardMonitor: (state: boolean) => void;
@@ -53,6 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const notifyCb = document.getElementById('notifyCb') as HTMLInputElement;
     const soundCb = document.getElementById('soundCb') as HTMLInputElement;
 
+    const openFavBtn = document.getElementById('openFavBtn') as HTMLButtonElement;
+    const downloadFavBtn = document.getElementById('downloadFavBtn') as HTMLButtonElement;
+
+    let currentUserMid: number | null = null;
     let downloadQueue: { url: string, isSilent: boolean }[] = [];
     let isDownloading = false;
 
@@ -88,6 +94,7 @@ document.addEventListener('DOMContentLoaded', () => {
         } 
         else if (
             inputUrl.includes('list/ml') || 
+            inputUrl.includes('medialist') || 
             inputUrl.includes('favlist') || 
             inputUrl.includes('fid=') || 
             inputUrl.includes('collection') || 
@@ -204,6 +211,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!window.api) return;
         const info = await window.api.getUserInfo();
         if (info.isLogin && info.uname && info.face) {
+            currentUserMid = info.mid || null;
             if(loginBtn) loginBtn.style.display = 'none';
             if(userProfile) userProfile.style.display = 'flex';
             if(userName) userName.innerText = info.uname;
@@ -241,6 +249,26 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }, 3000);
     }
+
+    openFavBtn?.addEventListener('click', () => {
+        if (!currentUserMid) return alert("请先扫码登录后再使用此功能");
+        const url = `https://space.bilibili.com/${currentUserMid}/favlist`;
+        window.api.openExternal(url);
+    });
+
+    downloadFavBtn?.addEventListener('click', () => {
+        if (!currentUserMid) return alert("请先扫码登录后再使用此功能");
+        
+        const url = `https://space.bilibili.com/${currentUserMid}/favlist`;
+        downloadQueue.push({ url: url, isSilent: false });
+        
+        if (logDiv) {
+            logDiv.innerText += `\n>>> 📂 已将个人收藏夹页加入下载队列...\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        if (!isDownloading) processQueue();
+    });
 
     window.api.onClipboardMatch((url) => {
         if (urlInput) {

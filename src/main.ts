@@ -184,7 +184,12 @@ ipcMain.on('set-sound-state', (event, state) => {
   isSoundEnabled = state;
 });
 
-// 【新增】接收前端传来的“全部队列下载完成”信号
+// 【新增】打开外部链接
+ipcMain.on('open-external', (event, url) => {
+  shell.openExternal(url);
+});
+
+// 【核心修改】接收前端传来的“全部队列下载完成”信号
 ipcMain.on('queue-finished', () => {
   if (isNotifyEnabled && Notification.isSupported()) {
       new Notification({
@@ -224,10 +229,35 @@ ipcMain.handle('get-user-info', async () => {
     };
     const res = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
     if (res.data.code === 0 && res.data.data.isLogin) {
-      return { isLogin: true, uname: res.data.data.uname, face: res.data.data.face };
+      return { 
+        isLogin: true, 
+        uname: res.data.data.uname, 
+        face: res.data.data.face,
+        mid: res.data.data.mid
+      };
     }
     return { isLogin: false };
   } catch (e: any) { return { isLogin: false, error: e.message }; }
+});
+
+// 【新增】获取默认收藏夹 ID
+ipcMain.handle('get-default-fav-id', async () => {
+  if (!sessionCookie) return null;
+  try {
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
+      'Cookie': sessionCookie
+    };
+    const navRes = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
+    if (navRes.data.code !== 0 || !navRes.data.data.isLogin) return null;
+    const mid = navRes.data.data.mid;
+    
+    const favRes = await axios.get(`https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${mid}`, { headers });
+    if (favRes.data.code === 0 && favRes.data.data.list && favRes.data.data.list.length > 0) {
+      return favRes.data.data.list[0].id;
+    }
+    return null;
+  } catch (e) { return null; }
 });
 
 ipcMain.handle('get-qrcode', async () => {

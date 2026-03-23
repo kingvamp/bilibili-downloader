@@ -329,16 +329,50 @@
             border-radius: 4px;
         }
 
-        .setting-item {
-            margin-bottom: 15px;
-            text-align: left;
-        }
-
         .setting-title {
             font-size: 12px;
             color: #888;
             margin-bottom: 6px;
             display: block;
+        }
+
+        .shortcut-group {
+            display: flex;
+            width: 100%;
+            max-width: 600px;
+            gap: 10px;
+            margin-bottom: 15px;
+            justify-content: flex-start;
+        }
+
+        .shortcut-btn {
+            background: #333;
+            color: #aaa;
+            border: 1px solid #444;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .shortcut-btn:hover {
+            background: #444;
+            color: #fff;
+            border-color: #555;
+        }
+
+        .shortcut-btn:active {
+            transform: scale(0.98);
+        }
+
+        .shortcut-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
         }
     </style>
 </head>
@@ -377,6 +411,16 @@
         <div class="input-group">
             <input type="text" id="urlInput" placeholder="粘贴视频链接、收藏夹链接 或 播单数字ID (支持多行批量)">
             <button id="downloadBtn" class="download-btn">解析并下载</button>
+        </div>
+        <div class="shortcut-group">
+            <button id="openFavBtn" class="shortcut-btn" title="在浏览器中打开我的默认收藏夹">
+                <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
+                打开默认收藏夹
+            </button>
+            <button id="downloadFavBtn" class="shortcut-btn" title="解析并下载我的默认收藏夹全部视频">
+                <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
+                下载默认收藏夹
+            </button>
         </div>
         <div id="log">等待任务...</div>
     </main>
