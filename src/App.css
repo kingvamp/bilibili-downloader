@@ -1,0 +1,379 @@
+body {
+    margin: 0;
+    padding: 0;
+    background: #1e1e1e;
+    color: #ccc;
+    font-family: 'Segoe UI', sans-serif;
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+    border-radius: 8px;
+    border: 1px solid #333;
+    box-sizing: border-box;
+}
+
+#root {
+    display: contents;
+}
+
+header {
+    height: 40px;
+    background: #252526;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0 0 0 15px;
+    border-radius: 8px 8px 0 0;
+    user-select: none;
+    -webkit-app-region: drag;
+}
+
+.app-title {
+    font-weight: bold;
+    color: #00A1D6;
+    font-size: 14px;
+    letter-spacing: 1px;
+}
+
+.header-right {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    -webkit-app-region: no-drag;
+}
+
+.user-area {
+    margin-right: 15px;
+    display: flex;
+    align-items: center;
+    -webkit-app-region: no-drag;
+}
+
+.login-btn {
+    background: #fb7299;
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.user-profile {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #333;
+    padding: 2px 8px;
+    border-radius: 12px;
+    border: 1px solid #444;
+}
+
+.user-profile img {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+}
+
+.settings-btn {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.settings-btn:hover {
+    color: #fff;
+    background: #333;
+}
+
+.settings-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+.window-controls {
+    display: flex;
+    height: 100%;
+}
+
+.win-btn {
+    width: 46px;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: #ccc;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    outline: none;
+}
+
+.win-btn:hover {
+    background: #3c3c3c;
+}
+
+.close-btn:hover {
+    background: #c42b1c;
+    color: white;
+    border-top-right-radius: 8px;
+}
+
+.win-btn svg {
+    width: 12px;
+    height: 12px;
+    fill: currentColor;
+}
+
+main {
+    flex: 1;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    overflow: hidden;
+}
+
+.input-group {
+    display: flex;
+    width: 100%;
+    max-width: 600px;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+input[type="text"] {
+    flex: 1;
+    padding: 12px 15px;
+    background: #2d2d2d;
+    border: 2px solid #444;
+    color: white;
+    border-radius: 6px;
+    outline: none;
+    transition: 0.2s;
+    font-size: 14px;
+}
+
+input[type="text"]:focus {
+    border-color: #00A1D6;
+    background: #333;
+}
+
+.download-btn {
+    padding: 0 25px;
+    background: linear-gradient(135deg, #00A1D6, #00b5e5);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    white-space: nowrap;
+    font-weight: bold;
+    font-size: 14px;
+    transition: 0.2s;
+}
+
+.download-btn:hover {
+    filter: brightness(1.1);
+    box-shadow: 0 2px 8px rgba(0, 161, 214, 0.4);
+}
+
+.download-btn:active {
+    transform: scale(0.98);
+}
+
+.secondary-btn {
+    background: #444;
+    padding: 0 15px;
+    font-size: 12px;
+}
+
+.secondary-btn:hover {
+    background: #555;
+    box-shadow: none;
+    filter: none;
+}
+
+.option-label {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    transition: 0.2s;
+    font-size: 14px;
+    color: #ccc;
+}
+
+.option-label:hover {
+    color: #fff;
+}
+
+.option-label input[type="checkbox"] {
+    margin-right: 8px;
+    cursor: pointer;
+    accent-color: #00A1D6;
+    width: 16px;
+    height: 16px;
+}
+
+#log {
+    width: 100%;
+    max-width: 600px;
+    flex: 1;
+    min-height: 0;
+    background: #111;
+    padding: 15px;
+    border-radius: 6px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+    white-space: pre-wrap;
+    border: 1px solid #333;
+    overflow-y: auto;
+    word-break: break-all;
+}
+
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    z-index: 999;
+    border-radius: 8px;
+}
+
+/* React will handle visibility via conditional rendering, so we keep the base style */
+.modal-overlay.active {
+    display: flex;
+}
+
+.modal-content {
+    background: #252526;
+    padding: 25px;
+    border-radius: 8px;
+    text-align: center;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    width: 300px;
+    position: relative;
+}
+
+.modal-close-icon {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    border-radius: 4px;
+    transition: 0.2s;
+}
+
+.modal-close-icon:hover {
+    color: #fff;
+    background: #c42b1c;
+}
+
+.modal-close-icon svg {
+    width: 10px;
+    height: 10px;
+    fill: currentColor;
+}
+
+.modal-btn {
+    padding: 10px 0;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: 0.2s;
+    font-weight: bold;
+    border: none;
+    outline: none;
+}
+
+.btn-cancel {
+    background: transparent;
+    border: 1px solid #555;
+    color: #ccc;
+}
+
+.btn-cancel:hover {
+    background: #333;
+    color: #fff;
+}
+
+.btn-save {
+    background: #00A1D6;
+    color: #fff;
+}
+
+.btn-save:hover {
+    background: #00b5e5;
+}
+
+#qr-img {
+    width: 180px;
+    height: 180px;
+    background: #fff;
+    border-radius: 4px;
+}
+
+.setting-title {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 6px;
+    display: block;
+}
+
+.shortcut-group {
+    display: flex;
+    width: 100%;
+    max-width: 600px;
+    gap: 10px;
+    margin-bottom: 15px;
+    justify-content: flex-start;
+}
+
+.shortcut-btn {
+    background: #333;
+    color: #aaa;
+    border: 1px solid #444;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.shortcut-btn:hover {
+    background: #444;
+    color: #fff;
+    border-color: #555;
+}
+
+.shortcut-btn:active {
+    transform: scale(0.98);
+}
+
+.shortcut-btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
