@@ -1,6 +1,6 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, clipboard, dialog, Notification, shell } from 'electron';
 import path from 'path';
-import { spawn } from 'child_process';
+import { spawn, ChildProcess } from 'child_process';
 import axios from 'axios';
 import QRCode from 'qrcode';
 import fs from 'fs';
@@ -19,6 +19,8 @@ let isQuitting = false;
 let isCloseToTray = true; 
 let isNotifyEnabled = true; 
 let isSoundEnabled = false; 
+
+let currentChild: ChildProcess | null = null;
 
 function loadCookie(): void {
   try {
@@ -193,6 +195,14 @@ ipcMain.on('open-external', (event, url) => {
   shell.openExternal(url);
 });
 
+// 【新增】停止下载
+ipcMain.on('stop-download', () => {
+  if (currentChild) {
+    currentChild.kill();
+    currentChild = null;
+  }
+});
+
 // 【核心修改】接收前端传来的“全部队列下载完成”信号
 ipcMain.on('queue-finished', () => {
   if (isNotifyEnabled && Notification.isSupported()) {
@@ -321,20 +331,33 @@ ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSile
 
   if (sessionCookie) args.push('-c', sessionCookie);
 
-  const child = spawn(downloaderPath, args);
+  // 如果已经有任务在运行，先停止之前的任务（理论上前端应控制好队列，此处做保底）
+  if (currentChild) {
+      currentChild.kill();
+  }
+
+  currentChild = spawn(downloaderPath, args);
+  const child = currentChild; // 维持原有闭包引用
   const decoder = new TextDecoder('gbk'); 
   
-  child.stdout.on('data', (data) => {
-    let text = decoder.decode(data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-    event.sender.send('download-progress', text);
-  });
+  if (child.stdout) {
+      child.stdout.on('data', (data) => {
+        let text = decoder.decode(data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+        event.sender.send('download-progress', text);
+      });
+  }
   
-  child.stderr.on('data', (data) => {
-    let text = decoder.decode(data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-    event.sender.send('download-progress', text);
-  });
+  if (child.stderr) {
+      child.stderr.on('data', (data) => {
+        let text = decoder.decode(data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
+        event.sender.send('download-progress', text);
+      });
+  }
   
   child.on('close', (code) => {
+      if (currentChild === child) {
+          currentChild = null;
+      }
       // 【修改】只保留静默剪贴板反写的逻辑，将通知外移
       if (code === 0 && isSilent) {
           clipboard.writeText(`Enhancer_Download_Finished||${rawUrl}`);

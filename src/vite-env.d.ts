@@ -3,6 +3,7 @@
 
 interface IElectronAPI {
   startDownload: (url: string, isBatch?: boolean, dlSub?: boolean, downloadDir?: string, isSilent?: boolean, isMultiThread?: boolean) => void;
+  stopDownload: () => void;
   onProgress: (callback: (data: string) => void) => void;
   onComplete: (callback: (code: number) => void) => void;
   getQRCode: () => Promise<{ success: boolean; imgData?: string; key?: string; error?: string }>;

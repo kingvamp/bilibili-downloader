@@ -42,12 +42,18 @@ function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [urlInput, setUrlInput] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [downloadQueue, setDownloadQueue] = useState<DownloadTask[]>([]);
+  const [activeTask, setActiveTask] = useState<DownloadTask | null>(null);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const [completedTasks, setCompletedTasks] = useState(0);
+  const [subProgress, setSubProgress] = useState<{ current: number; total: number } | null>(null);
 
   // Refs
   const logRef = useRef<HTMLDivElement>(null);
   const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
   const currentTaskRef = useRef<DownloadTask | null>(null);
+  const isPausedRef = useRef(false);
 
   // --- Actions ---
 
@@ -74,56 +80,35 @@ function App() {
   }, []);
 
   const processQueue = useCallback(() => {
+    if (isPausedRef.current || isDownloading) return;
+
+    let next: DownloadTask | null = null;
+    
     setDownloadQueue(prevQueue => {
-      if (prevQueue.length === 0) {
-        if (isDownloading) {
+      if (activeTask) {
+        next = activeTask;
+        return prevQueue;
+      }
+      if (prevQueue.length > 0) {
+        next = prevQueue[0];
+        setActiveTask(next);
+        return prevQueue.slice(1);
+      }
+      // No work
+      setIsDownloading(false);
+      // Wait, should we reset counts here? 
+      // User might want to see 10/10 after finishing.
+      // Let's only reset on "Stop" or when a NEW batch starts.
+      if (logs !== '等待任务...' && (logs.includes('🚀 开始处理') || logs.includes('🚀 开始下载'))) {
         window.api.notifyQueueDone();
-        }
-        setIsDownloading(false);
         appendLog('\n>>> 🟢 所有队列任务已执行完毕，等待新任务...\n');
-        return [];
       }
-
-      setIsDownloading(true);
-      const nextTask = prevQueue[0];
-      const remainingQueue = prevQueue.slice(1);
-      currentTaskRef.current = nextTask;
-
-      let inputUrl = nextTask.url;
-      let isBatch = false;
-
-      // Smart recognition logic from renderer.ts
-      if (/^\d+$/.test(inputUrl)) {
-        inputUrl = `https://www.bilibili.com/list/ml${inputUrl}`;
-        isBatch = true;
-        if (!nextTask.isSilent) appendLog(`\n>>> 🤖 智能识别：纯数字 ID，转换为播单链接...\n`);
-      } else if (
-        inputUrl.includes('list/ml') ||
-        inputUrl.includes('medialist') ||
-        inputUrl.includes('favlist') ||
-        inputUrl.includes('fid=') ||
-        inputUrl.includes('collection') ||
-        inputUrl.includes('/series/') ||
-        inputUrl.includes('sid=')
-      ) {
-        isBatch = true;
-        if (!nextTask.isSilent) appendLog(`\n>>> 🤖 智能识别：检测到列表特征...\n`);
-      }
-
-      appendLog(`\n>>> 🚀 开始处理队列任务: ${inputUrl}\n`);
-
-      window.api.startDownload(
-        inputUrl,
-        isBatch,
-        settings.dlSub,
-        settings.downloadDir,
-        nextTask.isSilent,
-        settings.multiThread
-      );
-
-      return remainingQueue;
+      return [];
     });
-  }, [isDownloading, settings, appendLog]);
+
+    // We can't use 'next' immediately because setDownloadQueue is async.
+    // Instead, I'll use a check outside to trigger the download.
+  }, [isDownloading, activeTask, logs, appendLog]);
 
   const checkUserStatus = async () => {
     const info = await window.api.getUserInfo();
@@ -160,9 +145,46 @@ function App() {
     if (!rawText) return alert('请在上方输入框内粘贴链接');
     const urls = rawText.split(/[\s\n\r]+/).filter(u => u.length > 0);
     const tasks = urls.map(url => ({ url, isSilent: false }));
+    
+    setTotalTasks(prev => {
+      // If we are starting fresh or appending to a finished batch
+      if (prev === 0 || completedTasks >= prev) {
+        setCompletedTasks(0);
+        return tasks.length;
+      }
+      return prev + tasks.length;
+    });
+
     setDownloadQueue(prev => [...prev, ...tasks]);
     appendLog(`\n>>> 📥 成功切分！已将 ${urls.length} 个任务加入下载队列...\n`);
     setUrlInput('');
+  };
+
+  const handlePause = () => {
+    isPausedRef.current = true;
+    window.api.stopDownload();
+    setIsPaused(true);
+    setIsDownloading(false);
+    appendLog(`\n>>> ⏸️ 下载已暂停。\n`);
+  };
+
+  const handleResume = () => {
+    isPausedRef.current = false;
+    setIsPaused(false);
+    appendLog(`\n>>> ▶️ 下载已恢复。\n`);
+  };
+
+  const handleStop = () => {
+    window.api.stopDownload();
+    isPausedRef.current = false;
+    setDownloadQueue([]);
+    setActiveTask(null);
+    setIsPaused(false);
+    setIsDownloading(false);
+    setTotalTasks(0);
+    setCompletedTasks(0);
+    setSubProgress(null);
+    appendLog(`\n>>> ⏹️ 下载已停止并清空队列。\n`);
   };
 
   const saveSettings = (newSettings: Settings) => {
@@ -205,10 +227,54 @@ function App() {
   // Listeners
   useEffect(() => {
     const api = window.api;
-    api.onProgress((data: string) => appendLog(data));
+    api.onProgress((data: string) => {
+      appendLog(data);
+      // Split by line and scan each line for [X/Y], P1, or Chinese progress patterns
+      const lines = data.split(/[\r\n]+/);
+      for (const line of lines) {
+        // 1. [X/Y] or (X/Y)
+        const matchBracket = line.match(/[\[\(\s](\d+)\s*[\/\-之\/]\s*(\d+)[\]\)\s]/);
+        if (matchBracket) {
+          const current = parseInt(matchBracket[1]);
+          const total = parseInt(matchBracket[2]);
+          if (total > 1 && current <= total && total < 5000) {
+            if (!(total === 1080 || total === 720 || total === 480 || total === 2160)) {
+               setSubProgress({ current, total });
+               continue;
+            }
+          }
+        }
+
+        // 2. "共计 39 个分P" (Total parts)
+        const totalMatch = line.match(/共计\s*(\d+)\s*个/);
+        if (totalMatch) {
+          setSubProgress(prev => ({ 
+            current: prev ? prev.current : 0, 
+            total: parseInt(totalMatch[1]) 
+          }));
+        }
+
+        // 3. Action-oriented part indicators (Start/Finish)
+        const partMatch = line.match(/开始下载P(\d+)/i) || 
+                          line.match(/下载P(\d+)完毕/i);
+        if (partMatch) {
+          setSubProgress(prev => ({ 
+            current: parseInt(partMatch[1]), 
+            total: prev ? prev.total : 0 
+          }));
+        }
+      }
+    });
     api.onComplete((code: number) => {
-      appendLog(`\n====== 当前任务结束 (Code: ${code}) ======\n`);
-      processQueue();
+      appendLog(`\n====== 任务结束 (Code: ${code}) ======\n`);
+      
+      if (isPausedRef.current) {
+        setIsDownloading(false);
+      } else {
+        setCompletedTasks(prev => prev + 1);
+        setActiveTask(null);
+        processQueue();
+      }
     });
     api.onClipboardMatch((url: string) => {
       setUrlInput(url);
@@ -216,17 +282,50 @@ function App() {
     });
     api.onSilentClipboardMatch((url: string) => {
       appendLog(`\n>>> 🤫 捕获到外部静默下载指令，已加入队列: ${url}\n`);
+      setTotalTasks(prev => {
+        if (prev === 0 || completedTasks >= prev) {
+          setCompletedTasks(0);
+          return 1;
+        }
+        return prev + 1;
+      });
       setDownloadQueue(prev => [...prev, { url, isSilent: true }]);
     });
     api.onOpenSettings(() => setIsSettingsModalOpen(true));
   }, [appendLog, processQueue]);
 
-  // Trigger download when queue changes and not downloading
+  // Trigger download when states are ready
   useEffect(() => {
-    if (!isDownloading && downloadQueue.length > 0) {
-      processQueue();
+    if (!isDownloading && !isPaused && (activeTask || downloadQueue.length > 0)) {
+      const taskToStart = activeTask || downloadQueue[0];
+      if (!taskToStart) return;
+
+      if (!activeTask) {
+        setActiveTask(taskToStart);
+        setDownloadQueue(prev => prev.slice(1));
+      }
+
+      setIsDownloading(true);
+      setSubProgress(null);
+      currentTaskRef.current = taskToStart;
+
+      let inputUrl = taskToStart.url;
+      let isBatch = false;
+      if (/^\d+$/.test(inputUrl) || inputUrl.includes('list/ml') || inputUrl.includes('favlist')) {
+        isBatch = true;
+      }
+
+      appendLog(`\n>>> 🚀 开始下载: ${inputUrl}\n`);
+      window.api.startDownload(
+        inputUrl,
+        isBatch,
+        settings.dlSub,
+        settings.downloadDir,
+        taskToStart.isSilent,
+        settings.multiThread
+      );
     }
-  }, [downloadQueue, isDownloading, processQueue]);
+  }, [isDownloading, isPaused, downloadQueue.length, activeTask, settings]);
 
   // Handle Scroll
   useEffect(() => {
@@ -273,18 +372,6 @@ function App() {
       </header>
 
       <main>
-        <div className="input-group">
-          <input
-            type="text"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            placeholder="粘贴视频链接、收藏夹链接 或 播单数字ID (支持多行批量)"
-          />
-          <button className="download-btn" onClick={handleDownload} disabled={isDownloading && downloadQueue.length === 0}>
-            解析并下载
-          </button>
-        </div>
-
         <div className="shortcut-group">
           <button
             className="shortcut-btn"
@@ -309,6 +396,66 @@ function App() {
             下载默认收藏夹
           </button>
         </div>
+
+        <div className="input-group">
+          <input
+            type="text"
+            value={urlInput}
+            onChange={(e) => setUrlInput(e.target.value)}
+            placeholder="粘贴视频链接、收藏夹链接 或 播单数字ID (支持多行批量)"
+          />
+          <button className="download-btn" onClick={handleDownload} disabled={isDownloading || isPaused || (urlInput.trim() === '' && downloadQueue.length === 0)}>
+            解析并下载
+          </button>
+        </div>
+
+        <div className="control-group">
+          {isDownloading ? (
+              <button className="control-btn pause-btn" onClick={handlePause}>
+                <svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                暂停
+              </button>
+          ) : (
+            <button className="control-btn resume-btn" onClick={handleResume} disabled={!isPaused}>
+              <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              继续
+            </button>
+          )}
+          <button className="control-btn stop-btn" onClick={handleStop} disabled={!isDownloading && !isPaused && downloadQueue.length === 0}>
+            <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            停止
+          </button>
+        </div>
+
+        {(totalTasks > 0) && (
+          <div className="progress-container">
+            <div className="progress-status">
+              <span>总队列进度: 正在处理第 {Math.min(isDownloading ? completedTasks + 1 : completedTasks, totalTasks)} / {totalTasks} 个链接</span>
+              <span>{totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0}%</span>
+            </div>
+            <div className="progress-bar-bg">
+              <div 
+                className="progress-bar-fill" 
+                style={{ width: `${totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+
+        {subProgress && (
+          <div className="progress-container sub-progress">
+             <div className="progress-status">
+              <span>正在处理当前列表: {subProgress.current} / {subProgress.total}</span>
+              <span>{Math.round((subProgress.current / subProgress.total) * 100)}%</span>
+            </div>
+            <div className="progress-bar-bg">
+              <div 
+                className="progress-bar-fill sub-fill" 
+                style={{ width: `${(subProgress.current / subProgress.total) * 100}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
 
         <div id="log" ref={logRef}>
           {logs}

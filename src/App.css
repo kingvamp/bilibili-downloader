@@ -377,3 +377,103 @@ input[type="text"]:focus {
     height: 14px;
     fill: currentColor;
 }
+
+.control-group {
+    display: flex;
+    width: 100%;
+    max-width: 600px;
+    gap: 10px;
+    margin-bottom: 20px;
+    justify-content: center;
+}
+
+.control-btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: 0.2s;
+    color: white;
+}
+
+.control-btn svg {
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
+}
+
+.pause-btn {
+    background: #f0ad4e;
+}
+
+.pause-btn:hover {
+    filter: brightness(1.1);
+}
+
+.resume-btn {
+    background: #5cb85c;
+}
+
+.resume-btn:hover {
+    filter: brightness(1.1);
+}
+
+.stop-btn {
+    background: #d9534f;
+}
+
+.stop-btn:hover {
+    filter: brightness(1.1);
+}
+
+.control-btn:active {
+    transform: scale(0.96);
+}
+
+.progress-container {
+    width: 100%;
+    max-width: 600px;
+    margin-bottom: 20px;
+}
+
+.progress-status {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #aaa;
+    margin-bottom: 8px;
+}
+
+.progress-bar-bg {
+    width: 100%;
+    height: 6px;
+    background: #333;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #00A1D6, #00b5e5);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.sub-progress {
+    margin-top: -10px;
+    margin-bottom: 25px;
+}
+
+.sub-progress .progress-status {
+    font-size: 11px;
+    color: #888;
+}
+
+.sub-fill {
+    background: linear-gradient(90deg, #fb7299, #ff9db5);
+}

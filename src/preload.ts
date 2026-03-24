@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 contextBridge.exposeInMainWorld('api', {
   startDownload: (url: string, isBatch: boolean = false, dlSub: boolean = false, downloadDir: string = '', isSilent: boolean = false, isMultiThread: boolean = false) => 
       ipcRenderer.send('start-download', url, isBatch, dlSub, downloadDir, isSilent, isMultiThread),
+  stopDownload: () => ipcRenderer.send('stop-download'),
   
   onProgress: (callback: (data: string) => void) => {
     ipcRenderer.removeAllListeners('download-progress');
