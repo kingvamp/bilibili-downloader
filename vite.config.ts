@@ -11,7 +11,7 @@ export default defineConfig({
     electron([
       {
         // Main-Process entry file of the Electron App.
-        entry: 'src/main.ts',
+        entry: 'src/main/main.ts',
       },
       {
         entry: 'src/preload.ts',
