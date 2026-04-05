@@ -227,6 +227,10 @@ export function useDownload(settings: Settings) {
     appendLog(`\n>>> ⏹️ 下载已停止并清空队列。\n`);
   };
 
+  const clearLogs = useCallback(() => {
+    setLogs('等待任务...');
+  }, []);
+
   useEffect(() => {
     const api = window.api;
     api.onProgress((data: string) => {
@@ -337,6 +341,7 @@ export function useDownload(settings: Settings) {
     handlePause,
     handleResume,
     handleStop,
+    clearLogs,
     checkAndAddTasks,
     handleDetectFavlist,
     handleCollectAll,

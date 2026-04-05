@@ -9,9 +9,6 @@ interface DownloadFormProps {
   isCheckingDuplicates: boolean;
   hasTasks: boolean;
   onDownload: () => void;
-  onPause: () => void;
-  onResume: () => void;
-  onStop: () => void;
   onCheckAndAddTasks: (urls: string[], isSilent: boolean) => void;
   onDetectFavlist: () => void;
   isDetecting: boolean;
@@ -27,9 +24,6 @@ export function DownloadForm({
   isCheckingDuplicates,
   hasTasks,
   onDownload,
-  onPause,
-  onResume,
-  onStop,
   onCheckAndAddTasks,
   onDetectFavlist,
   isDetecting,
@@ -84,24 +78,6 @@ export function DownloadForm({
           disabled={isDownloading || isPaused || isCheckingDuplicates || isDetecting || (urlInput.trim() === '' && !hasTasks)}
         >
           {isCheckingDuplicates ? '预查重中...' : '解析并下载'}
-        </button>
-      </div>
-
-      <div className="control-group">
-        {isDownloading ? (
-            <button className="control-btn pause-btn" onClick={onPause}>
-              <svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
-              暂停
-            </button>
-        ) : (
-          <button className="control-btn resume-btn" onClick={onResume} disabled={!isPaused}>
-            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
-            继续
-          </button>
-        )}
-        <button className="control-btn stop-btn" onClick={onStop} disabled={!isDownloading && !isPaused && !hasTasks}>
-          <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
-          停止
         </button>
       </div>
     </>

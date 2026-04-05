@@ -42,6 +42,7 @@ function App() {
     handlePause,
     handleResume,
     handleStop,
+    clearLogs,
     checkAndAddTasks,
     handleDetectFavlist,
     handleCollectAll,
@@ -86,9 +87,6 @@ function App() {
           isCheckingDuplicates={isCheckingDuplicates}
           hasTasks={totalTasks > 0}
           onDownload={handleDownload}
-          onPause={handlePause}
-          onResume={handleResume}
-          onStop={handleStop}
           onCheckAndAddTasks={checkAndAddTasks}
           onDetectFavlist={handleDetectFavlist}
           isDetecting={isDetecting}
@@ -102,7 +100,46 @@ function App() {
           subProgress={subProgress}
         />
 
-        <LogPanel logs={logs} />
+        <div className="log-container" style={{ position: 'relative', flex: 1, minHeight: 0, width: '100%', maxWidth: '600px', display: 'flex', flexDirection: 'column' }}>
+          <LogPanel logs={logs} />
+          <button 
+            className="clear-log-btn"
+            style={{
+              position: 'absolute',
+              top: '10px',
+              right: '25px',
+              background: 'rgba(0,0,0,0.5)',
+              border: '1px solid #444',
+              color: '#888',
+              padding: '4px 8px',
+              borderRadius: '4px',
+              fontSize: '11px',
+              cursor: 'pointer',
+              zIndex: 10
+            }}
+            onClick={clearLogs}
+          >
+            清空日志
+          </button>
+        </div>
+
+        <div className="control-group" style={{ marginTop: '15px' }}>
+          {isDownloading ? (
+              <button className="control-btn pause-btn" onClick={handlePause}>
+                <svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                暂停预览/下载
+              </button>
+          ) : (
+            <button className="control-btn resume-btn" onClick={handleResume} disabled={!isPaused}>
+              <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              继续
+            </button>
+          )}
+          <button className="control-btn stop-btn" onClick={handleStop} disabled={!isDownloading && !isPaused && totalTasks === 0}>
+            <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
+            停止全部任务
+          </button>
+        </div>
       </main>
 
       {/* Modals */}
