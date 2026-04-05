@@ -1,7 +1,8 @@
-import { ipcMain } from 'electron';
+import { ipcMain, dialog } from 'electron';
 import axios from 'axios';
 import QRCode from 'qrcode';
 import fs from 'fs';
+import path from 'path';
 import { state, AppPaths } from './state';
 
 export function setupApi() {
@@ -70,6 +71,67 @@ export function setupApi() {
       } 
       return { status: res.data.data.code === 86090 ? 'scanned' : 'waiting' };
     } catch (error) { return { status: 'error' }; }
+  });
+
+  // 【新增】递归扫描本地目录并同步 BV 号到历史记录
+  ipcMain.handle('scan-folder-for-history', async () => {
+    if (!state.mainWindow) return { success: false, message: '窗口未就绪' };
+    
+    const { canceled, filePaths } = await dialog.showOpenDialog(state.mainWindow, {
+      title: '选择包含已下载视频的目录 (将递归扫描)',
+      properties: ['openDirectory']
+    });
+
+    if (canceled || filePaths.length === 0) return { success: false, message: '已取消' };
+
+    const targetDir = filePaths[0];
+    const foundBvids = new Set<string>();
+
+    const scanDir = (dir: string) => {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        const fullPath = path.join(dir, file);
+        const stats = fs.statSync(fullPath);
+        if (stats.isDirectory()) {
+          scanDir(fullPath);
+        } else if (stats.isFile()) {
+          // 匹配视频和音频常用后缀
+          if (/\.(mp4|flv|mkv|mp3|m4a|xml|ass)$/i.test(file)) {
+            const match = file.match(/BV[a-zA-Z0-9]{10}/i);
+            if (match) {
+              foundBvids.add(match[0]);
+            }
+          }
+        }
+      }
+    };
+
+    try {
+      scanDir(targetDir);
+      
+      // 读取现有历史并合并
+      let existingHistory = '';
+      try { existingHistory = fs.readFileSync(AppPaths.historyPath, 'utf8'); } catch (e) {}
+      const historyLines = existingHistory.split('\n').map(s => s.trim()).filter(Boolean);
+      const historySet = new Set(historyLines);
+      
+      const initialSize = historySet.size;
+      foundBvids.forEach(bv => historySet.add(bv));
+      const addedCount = historySet.size - initialSize;
+
+      if (addedCount > 0) {
+        fs.writeFileSync(AppPaths.historyPath, Array.from(historySet).join('\n') + '\n', 'utf8');
+      }
+
+      return { 
+        success: true, 
+        foundCount: foundBvids.size, 
+        addedCount, 
+        totalInHistory: historySet.size 
+      };
+    } catch (error: any) {
+      return { success: false, message: error.message };
+    }
   });
 }
 

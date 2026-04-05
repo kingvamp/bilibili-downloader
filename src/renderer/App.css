@@ -261,11 +261,45 @@ input[type="text"]:focus {
 .modal-content {
     background: #252526;
     padding: 25px;
-    border-radius: 8px;
+    border-radius: 12px;
     text-align: center;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    width: 300px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+    width: 320px;
     position: relative;
+    border: 1px solid #444;
+}
+
+.settings-content {
+    width: 480px;
+    text-align: left;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.settings-scroll-area {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 10px;
+    margin-right: -10px;
+}
+
+/* Custom Scrollbar for premium feel */
+.settings-scroll-area::-webkit-scrollbar {
+    width: 6px;
+}
+
+.settings-scroll-area::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.settings-scroll-area::-webkit-scrollbar-thumb {
+    background: #444;
+    border-radius: 3px;
+}
+
+.settings-scroll-area::-webkit-scrollbar-thumb:hover {
+    background: #555;
 }
 
 .modal-close-icon {
@@ -441,6 +475,19 @@ input[type="text"]:focus {
     margin-bottom: 20px;
 }
 
+.setting-input-field {
+    flex: 1;
+    padding: 8px 12px;
+    background: #111;
+    border: 1px solid #444;
+    color: #00A1D6;
+    border-radius: 4px;
+    font-size: 12px;
+    outline: none;
+    cursor: default;
+    font-family: Consolas, monospace;
+}
+
 .progress-status {
     display: flex;
     justify-content: space-between;
@@ -476,4 +523,37 @@ input[type="text"]:focus {
 
 .sub-fill {
     background: linear-gradient(90deg, #fb7299, #ff9db5);
+}
+
+.setting-section-header {
+    margin: 25px 0 15px 0;
+    font-size: 14px;
+    font-weight: bold;
+    color: #00A1D6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+}
+
+.maintenance-card {
+    background: #1a1a1a;
+    border: 1px dashed #444;
+    border-radius: 8px;
+    padding: 15px;
+    margin-top: 10px;
+    transition: 0.3s;
+}
+
+.maintenance-card:hover {
+    border-color: #ff9800;
+    background: #222;
+}
+
+.maintenance-tip {
+    font-size: 12px;
+    color: #888;
+    line-height: 1.5;
+    margin-bottom: 12px;
 }
