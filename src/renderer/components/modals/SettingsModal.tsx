@@ -13,6 +13,7 @@ export function SettingsModal({
   onClose 
 }: SettingsModalProps) {
   const [tempSettings, setTempSettings] = useState<Settings>(initialSettings);
+  const [isScanning, setIsScanning] = useState(false);
 
   return (
     <div className="modal-overlay active">
@@ -131,18 +132,31 @@ export function SettingsModal({
               如果你手动移动了已下载的视频文件，可以通过此功能递归扫描目录，将发现的视频 BV 号重新同步到本地下载历史记录中，防止重复下载。
             </div>
             <button 
-              className="download-btn secondary-btn" 
+              className={`download-btn secondary-btn ${isScanning ? 'loading-btn' : ''}`}
               style={{ width: '100%', justifyContent: 'center', height: '36px', background: '#333', border: '1px solid #555' }}
+              disabled={isScanning}
               onClick={async () => {
-                const res = await window.api.scanFolderForHistory();
-                if (res.success) {
-                  alert(`📋 扫描完成！\n\n共发现 BV 号: ${res.foundCount} 个\n新添加到记录: ${res.addedCount} 个\n当前总记录数: ${res.totalInHistory} 个`);
-                } else if (res.message !== '已取消') {
-                  alert(`❌ 扫描失败: ${res.message}`);
+                setIsScanning(true);
+                try {
+                  const res = await window.api.scanFolderForHistory();
+                  if (res.success) {
+                    alert(`📋 扫描完成！\n\n共发现 BV 号: ${res.foundCount} 个\n新添加到记录: ${res.addedCount} 个\n当前总记录数: ${res.totalInHistory} 个`);
+                  } else if (res.message !== '已取消') {
+                    alert(`❌ 扫描失败: ${res.message}`);
+                  }
+                } finally {
+                  setIsScanning(false);
                 }
               }}
             >
-              📂 选择目录并扫描同步历史
+              {isScanning ? (
+                <>
+                  <div className="spinner"></div>
+                  <span>正在扫描中，请稍候...</span>
+                </>
+              ) : (
+                <>📂 选择目录并扫描同步历史</>
+              )}
             </button>
           </div>
         </div>
