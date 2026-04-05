@@ -42,9 +42,14 @@ export function useDownload(settings: Settings) {
     });
   }, []);
 
-  const addToQueue = (tasks: DownloadTask[]) => {
+  const completedTasksRef = useRef(0);
+  useEffect(() => {
+    completedTasksRef.current = completedTasks;
+  }, [completedTasks]);
+
+  const addToQueue = useCallback((tasks: DownloadTask[]) => {
     setTotalTasks(prev => {
-      if (prev === 0 || completedTasks >= prev) {
+      if (prev === 0 || completedTasksRef.current >= prev) {
         setCompletedTasks(0);
         return tasks.length;
       }
@@ -53,29 +58,9 @@ export function useDownload(settings: Settings) {
 
     setDownloadQueue(prev => [...prev, ...tasks]);
     appendLog(`\n>>> 📥 任务已入列（共 ${tasks.length} 个）...\n`);
-  };
+  }, [appendLog]);
 
-  const processQueue = useCallback(() => {
-    if (isPausedRef.current || isDownloading) return;
-
-    setDownloadQueue(prevQueue => {
-      if (activeTask) {
-        return prevQueue;
-      }
-      if (prevQueue.length > 0) {
-        setActiveTask(prevQueue[0]);
-        return prevQueue.slice(1);
-      }
-      setIsDownloading(false);
-      if (logs !== '等待任务...' && (logs.includes('🚀 开始处理') || logs.includes('🚀 开始下载'))) {
-        window.api.notifyQueueDone();
-        appendLog('\n>>> 🟢 所有队列任务已执行完毕，等待新任务...\n');
-      }
-      return [];
-    });
-  }, [isDownloading, activeTask, logs, appendLog]);
-
-  const checkAndAddTasks = async (urls: string[], isSilent: boolean) => {
+  const checkAndAddTasks = useCallback(async (urls: string[], isSilent: boolean) => {
     if (urls.length === 0) return;
     const tasks = urls.map(url => ({ url, isSilent }));
 
@@ -109,7 +94,7 @@ export function useDownload(settings: Settings) {
     } finally {
       setIsCheckingDuplicates(false);
     }
-  };
+  }, [addToQueue, appendLog]);
 
   const handleDownload = async () => {
     const rawText = urlInput.trim();
@@ -182,12 +167,10 @@ export function useDownload(settings: Settings) {
     });
     api.onComplete((code: number) => {
       appendLog(`\n====== 任务结束 (Code: ${code}) ======\n`);
-      if (isPausedRef.current) {
-        setIsDownloading(false);
-      } else {
+      setIsDownloading(false);
+      if (!isPausedRef.current) {
         setCompletedTasks(prev => prev + 1);
         setActiveTask(null);
-        processQueue();
       }
     });
     api.onClipboardMatch((url: string) => {
@@ -198,7 +181,7 @@ export function useDownload(settings: Settings) {
       appendLog(`\n>>> 🤫 捕获到外部静默下载指令，已加入队列: ${url}\n`);
       await checkAndAddTasks([url], true);
     });
-  }, [appendLog, processQueue]);
+  }, [appendLog, checkAndAddTasks]);
 
   useEffect(() => {
     if (!isDownloading && !isPaused && (activeTask || downloadQueue.length > 0)) {
@@ -229,8 +212,15 @@ export function useDownload(settings: Settings) {
         taskToStart.isSilent,
         settings.multiThread
       );
+    } else if (!isDownloading && !isPaused && totalTasks > 0 && completedTasks >= totalTasks && activeTask === null) {
+      if (logs !== '等待任务...' && (logs.includes('🚀 开始处理') || logs.includes('🚀 开始下载'))) {
+        window.api.notifyQueueDone();
+        appendLog('\n>>> 🟢 所有队列任务已执行完毕，等待新任务...\n');
+        setTotalTasks(0);
+        setCompletedTasks(0);
+      }
     }
-  }, [isDownloading, isPaused, downloadQueue.length, activeTask, settings]);
+  }, [isDownloading, isPaused, downloadQueue.length, activeTask, settings, totalTasks, completedTasks, logs, appendLog]);
 
   return {
     logs,
