@@ -1,0 +1,258 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { DownloadTask, Settings, DuplicateResult } from '../types';
+
+export function useDownload(settings: Settings) {
+  const [logs, setLogs] = useState<string>('等待任务...');
+  const [urlInput, setUrlInput] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
+  const [downloadQueue, setDownloadQueue] = useState<DownloadTask[]>([]);
+  const [activeTask, setActiveTask] = useState<DownloadTask | null>(null);
+  const [totalTasks, setTotalTasks] = useState(0);
+  const [completedTasks, setCompletedTasks] = useState(0);
+  const [subProgress, setSubProgress] = useState<{ current: number; total: number } | null>(null);
+  
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+  const [duplicateResults, setDuplicateResults] = useState<DuplicateResult[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<DownloadTask[]>([]);
+
+  const logRef = useRef<HTMLDivElement>(null);
+  const currentTaskRef = useRef<DownloadTask | null>(null);
+  const isPausedRef = useRef(false);
+
+  const appendLog = useCallback((data: string) => {
+    setLogs(prev => {
+      let newLogs = prev;
+      if (data.includes('\r')) {
+        const lines = prev.split('\n');
+        const cleanData = data.replace(/\r/g, '').trim();
+        if (cleanData) {
+          lines[lines.length - 1] = cleanData;
+          newLogs = lines.join('\n');
+        }
+      } else {
+        newLogs = prev + data;
+      }
+
+      if (newLogs.length > 15000) {
+        newLogs = newLogs.substring(newLogs.length - 10000);
+      }
+      return newLogs;
+    });
+  }, []);
+
+  const addToQueue = (tasks: DownloadTask[]) => {
+    setTotalTasks(prev => {
+      if (prev === 0 || completedTasks >= prev) {
+        setCompletedTasks(0);
+        return tasks.length;
+      }
+      return prev + tasks.length;
+    });
+
+    setDownloadQueue(prev => [...prev, ...tasks]);
+    appendLog(`\n>>> 📥 任务已入列（共 ${tasks.length} 个）...\n`);
+  };
+
+  const processQueue = useCallback(() => {
+    if (isPausedRef.current || isDownloading) return;
+
+    setDownloadQueue(prevQueue => {
+      if (activeTask) {
+        return prevQueue;
+      }
+      if (prevQueue.length > 0) {
+        setActiveTask(prevQueue[0]);
+        return prevQueue.slice(1);
+      }
+      setIsDownloading(false);
+      if (logs !== '等待任务...' && (logs.includes('🚀 开始处理') || logs.includes('🚀 开始下载'))) {
+        window.api.notifyQueueDone();
+        appendLog('\n>>> 🟢 所有队列任务已执行完毕，等待新任务...\n');
+      }
+      return [];
+    });
+  }, [isDownloading, activeTask, logs, appendLog]);
+
+  const checkAndAddTasks = async (urls: string[], isSilent: boolean) => {
+    if (urls.length === 0) return;
+    const tasks = urls.map(url => ({ url, isSilent }));
+
+    if (isSilent) {
+      addToQueue(tasks);
+      return;
+    }
+
+    setIsCheckingDuplicates(true);
+    appendLog(`\n>>> 🔍 正在预解析视频列表并检查下载历史，请稍候...\n`);
+
+    try {
+      let allResults: DuplicateResult[] = [];
+      for (const url of urls) {
+        const results = await window.api.checkDownloadHistory(url);
+        allResults = [...allResults, ...results];
+      }
+
+      const duplicates = allResults.filter(r => r.isDownloaded);
+      if (duplicates.length > 0) {
+        setDuplicateResults(allResults);
+        setPendingTasks(tasks);
+        setIsDuplicateModalOpen(true);
+      } else {
+        addToQueue(tasks);
+      }
+    } catch (e) {
+      console.error(e);
+      appendLog(`\n>>> ⚠️ 预检查失败，将直接尝试常规下载流程。\n`);
+      addToQueue(tasks);
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    const rawText = urlInput.trim();
+    if (!rawText) return alert('请在上方输入框内粘贴链接');
+    const urls = rawText.split(/[\s\n\r]+/).filter(u => u.length > 0);
+    setUrlInput('');
+    await checkAndAddTasks(urls, false);
+  };
+
+  const handlePause = () => {
+    isPausedRef.current = true;
+    window.api.stopDownload();
+    setIsPaused(true);
+    setIsDownloading(false);
+    appendLog(`\n>>> ⏸️ 下载已暂停。\n`);
+  };
+
+  const handleResume = () => {
+    isPausedRef.current = false;
+    setIsPaused(false);
+    appendLog(`\n>>> ▶️ 下载已恢复。\n`);
+  };
+
+  const handleStop = () => {
+    window.api.stopDownload();
+    isPausedRef.current = false;
+    setDownloadQueue([]);
+    setActiveTask(null);
+    setIsPaused(false);
+    setIsDownloading(false);
+    setTotalTasks(0);
+    setCompletedTasks(0);
+    setSubProgress(null);
+    appendLog(`\n>>> ⏹️ 下载已停止并清空队列。\n`);
+  };
+
+  useEffect(() => {
+    const api = window.api;
+    api.onProgress((data: string) => {
+      appendLog(data);
+      const lines = data.split(/[\r\n]+/);
+      for (const line of lines) {
+        const matchBracket = line.match(/[\[\(\s](\d+)\s*[\/\-之\/]\s*(\d+)[\]\)\s]/);
+        if (matchBracket) {
+          const current = parseInt(matchBracket[1]);
+          const total = parseInt(matchBracket[2]);
+          if (total > 1 && current <= total && total < 5000) {
+            if (!(total === 1080 || total === 720 || total === 480 || total === 2160)) {
+               setSubProgress({ current, total });
+               continue;
+            }
+          }
+        }
+        const totalMatch = line.match(/共计\s*(\d+)\s*个/);
+        if (totalMatch) {
+          setSubProgress(prev => ({ 
+            current: prev ? prev.current : 0, 
+            total: parseInt(totalMatch[1]) 
+          }));
+        }
+        const partMatch = line.match(/开始下载P(\d+)/i) || 
+                          line.match(/下载P(\d+)完毕/i);
+        if (partMatch) {
+          setSubProgress(prev => ({ 
+            current: parseInt(partMatch[1]), 
+            total: prev ? prev.total : 0 
+          }));
+        }
+      }
+    });
+    api.onComplete((code: number) => {
+      appendLog(`\n====== 任务结束 (Code: ${code}) ======\n`);
+      if (isPausedRef.current) {
+        setIsDownloading(false);
+      } else {
+        setCompletedTasks(prev => prev + 1);
+        setActiveTask(null);
+        processQueue();
+      }
+    });
+    api.onClipboardMatch((url: string) => {
+      setUrlInput(url);
+      appendLog(`\n>>> 🔗 捕获到普通链接，已自动填入！\n`);
+    });
+    api.onSilentClipboardMatch(async (url: string) => {
+      appendLog(`\n>>> 🤫 捕获到外部静默下载指令，已加入队列: ${url}\n`);
+      await checkAndAddTasks([url], true);
+    });
+  }, [appendLog, processQueue]);
+
+  useEffect(() => {
+    if (!isDownloading && !isPaused && (activeTask || downloadQueue.length > 0)) {
+      const taskToStart = activeTask || downloadQueue[0];
+      if (!taskToStart) return;
+
+      if (!activeTask) {
+        setActiveTask(taskToStart);
+        setDownloadQueue(prev => prev.slice(1));
+      }
+
+      setIsDownloading(true);
+      setSubProgress(null);
+      currentTaskRef.current = taskToStart;
+
+      let inputUrl = taskToStart.url;
+      let isBatch = false;
+      if (/^\d+$/.test(inputUrl) || inputUrl.includes('list/ml') || inputUrl.includes('favlist')) {
+        isBatch = true;
+      }
+
+      appendLog(`\n>>> 🚀 开始下载: ${inputUrl}\n`);
+      window.api.startDownload(
+        inputUrl,
+        isBatch,
+        settings.dlSub,
+        settings.downloadDir,
+        taskToStart.isSilent,
+        settings.multiThread
+      );
+    }
+  }, [isDownloading, isPaused, downloadQueue.length, activeTask, settings]);
+
+  return {
+    logs,
+    urlInput,
+    setUrlInput,
+    isDownloading,
+    isPaused,
+    totalTasks,
+    completedTasks,
+    subProgress,
+    isCheckingDuplicates,
+    isDuplicateModalOpen,
+    setIsDuplicateModalOpen,
+    duplicateResults,
+    pendingTasks,
+    addToQueue,
+    handleDownload,
+    handlePause,
+    handleResume,
+    handleStop,
+    checkAndAddTasks,
+    logRef,
+    appendLog,
+  };
+}
