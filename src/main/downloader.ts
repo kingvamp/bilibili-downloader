@@ -273,7 +273,10 @@ async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlB
             // 归一化为大写进行比对
             const lines = existingHistory.split('\n').map(s => s.trim().toUpperCase()).filter(Boolean);
             const existingSet = new Set(lines);
-            let changed = false;
+            
+            // 重要：检查原始内容中是否包含小写。如果有，即使没有新下载，也标记为 changed 以便重写为全大写并去重
+            const hasLowerCase = existingHistory.split('\n').some(l => l.trim() !== l.trim().toUpperCase() && l.trim() !== '');
+            let changed = hasLowerCase;
             
             // 1. 如果任务彻底完成 (code 0)，且输入是单视频 URL，确保将其记入历史
             if (forceAddUrlBv) {

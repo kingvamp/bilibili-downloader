@@ -168,14 +168,18 @@ export function setupApi() {
       // 读取现有历史并合并
       let existingHistory = '';
       try { existingHistory = fs.readFileSync(AppPaths.historyPath, 'utf8'); } catch (e) {}
-      const historyLines = existingHistory.split('\n').map(s => s.trim()).filter(Boolean);
+      const historyLines = existingHistory.split('\n').map(s => s.trim().toUpperCase()).filter(Boolean);
       const historySet = new Set(historyLines);
       
+      // 检查是否有任何旧记录不是大写，如果是，这本身就是一种变更（清理大写重复）
+      const hasLowerCase = existingHistory.split('\n').some(l => l.trim() !== l.trim().toUpperCase() && l.trim() !== '');
+      let changedByCase = hasLowerCase;
+      
       const initialSize = historySet.size;
-      foundBvids.forEach(bv => historySet.add(bv));
+      foundBvids.forEach(bv => historySet.add(bv.toUpperCase()));
       const addedCount = historySet.size - initialSize;
 
-      if (addedCount > 0) {
+      if (addedCount > 0 || changedByCase) {
         fs.writeFileSync(AppPaths.historyPath, Array.from(historySet).join('\n') + '\n', 'utf8');
       }
 
