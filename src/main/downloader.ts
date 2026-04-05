@@ -190,7 +190,9 @@ export function setupDownloader() {
             state.currentChild = null;
         }
         
-        await syncDownloadHistory(workDir, rawUrl);
+        // 任何退出状态（包括手动停止）都执行一次目录扫描，同步已完成的文件 BV
+        // 只有在 code === 0 时，才允许将 URL 对应的 BV 绝对写入历史
+        await syncDownloadHistory(workDir, rawUrl, code === 0);
 
         if (code === 0 && isSilent) {
             clipboard.writeText(`Enhancer_Download_Finished||${rawUrl}`);
@@ -206,8 +208,8 @@ export function setupDownloader() {
   });
 }
 
-// 修复后的历史记录提取
-async function syncDownloadHistory(workDir: string, rawUrl: string) {
+// 修复后的历史记录提取：增加 forceAddUrlBv 判定
+async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlBv: boolean = false) {
     try {
         const syncDir = workDir || './downloads';
         if (fs.existsSync(syncDir)) {
@@ -219,14 +221,19 @@ async function syncDownloadHistory(workDir: string, rawUrl: string) {
             
             const lines = existingHistory.split('\n').map(s => s.trim()).filter(Boolean);
             const existingSet = new Set(lines);
-            let addedBvids = false;
+            let changed = false;
             
-            const rawBvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/i);
-            if (rawBvidMatch && !existingSet.has(rawBvidMatch[0])) {
-                existingSet.add(rawBvidMatch[0]);
-                addedBvids = true;
+            // 1. 如果任务彻底完成 (code 0)，且输入是单视频 URL，确保将其记入历史
+            if (forceAddUrlBv) {
+                const rawBvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/i);
+                if (rawBvidMatch && !existingSet.has(rawBvidMatch[0])) {
+                    existingSet.add(rawBvidMatch[0]);
+                    changed = true;
+                }
             }
             
+            // 2. 始终扫描目录内的实体文件。这对于“下载收藏夹中途取消”非常有用：
+            // 虽然进程 code 不是 0，但前 5 个已经下完的 mp4 文件名里带有 BV 号，会被扫入历史。
             for (const file of files) {
                 if (file.match(/\.(mp4|flv|mkv|mp3|m4a)$/i)) {
                     const bvidMatch = file.match(/BV[a-zA-Z0-9]{10}/i);
@@ -234,14 +241,13 @@ async function syncDownloadHistory(workDir: string, rawUrl: string) {
                         const bvid = bvidMatch[0];
                         if (!existingSet.has(bvid)) {
                             existingSet.add(bvid);
-                            addedBvids = true;
+                            changed = true;
                         }
                     }
                 }
             }
             
-            if (addedBvids) {
-                // 安全写入，用换行符显式 join 避免末尾无换行引起的拼接粘连
+            if (changed) {
                 await fs.promises.writeFile(historyPath, Array.from(existingSet).join('\n') + '\n', 'utf8');
             }
         }
