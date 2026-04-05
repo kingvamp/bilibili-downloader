@@ -48,6 +48,12 @@ function App() {
   const [totalTasks, setTotalTasks] = useState(0);
   const [completedTasks, setCompletedTasks] = useState(0);
   const [subProgress, setSubProgress] = useState<{ current: number; total: number } | null>(null);
+  
+  // Duplicate Check States
+  const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
+  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
+  const [duplicateResults, setDuplicateResults] = useState<{ bvid: string, title: string, isDownloaded: boolean }[]>([]);
+  const [pendingTasks, setPendingTasks] = useState<DownloadTask[]>([]);
 
   // Refs
   const logRef = useRef<HTMLDivElement>(null);
@@ -140,14 +146,8 @@ function App() {
     }, 3000);
   };
 
-  const handleDownload = () => {
-    const rawText = urlInput.trim();
-    if (!rawText) return alert('请在上方输入框内粘贴链接');
-    const urls = rawText.split(/[\s\n\r]+/).filter(u => u.length > 0);
-    const tasks = urls.map(url => ({ url, isSilent: false }));
-    
+  const addToQueue = (tasks: DownloadTask[]) => {
     setTotalTasks(prev => {
-      // If we are starting fresh or appending to a finished batch
       if (prev === 0 || completedTasks >= prev) {
         setCompletedTasks(0);
         return tasks.length;
@@ -156,8 +156,51 @@ function App() {
     });
 
     setDownloadQueue(prev => [...prev, ...tasks]);
-    appendLog(`\n>>> 📥 成功切分！已将 ${urls.length} 个任务加入下载队列...\n`);
+    appendLog(`\n>>> 📥 任务已入列（共 ${tasks.length} 个）...\n`);
+  };
+
+  const checkAndAddTasks = async (urls: string[], isSilent: boolean) => {
+    if (urls.length === 0) return;
+    const tasks = urls.map(url => ({ url, isSilent }));
+
+    if (isSilent) {
+      addToQueue(tasks);
+      return;
+    }
+
+    setIsCheckingDuplicates(true);
+    appendLog(`\n>>> 🔍 正在预解析视频列表并检查下载历史，请稍候...\n`);
+
+    try {
+      let allResults: { bvid: string, title: string, isDownloaded: boolean }[] = [];
+      for (const url of urls) {
+        const results = await (window as any).api.checkDownloadHistory(url);
+        allResults = [...allResults, ...results];
+      }
+
+      const duplicates = allResults.filter(r => r.isDownloaded);
+      if (duplicates.length > 0) {
+        setDuplicateResults(allResults);
+        setPendingTasks(tasks);
+        setIsDuplicateModalOpen(true);
+      } else {
+        addToQueue(tasks);
+      }
+    } catch (e) {
+      console.error(e);
+      appendLog(`\n>>> ⚠️ 预检查失败，将直接尝试常规下载流程。\n`);
+      addToQueue(tasks);
+    } finally {
+      setIsCheckingDuplicates(false);
+    }
+  };
+
+  const handleDownload = async () => {
+    const rawText = urlInput.trim();
+    if (!rawText) return alert('请在上方输入框内粘贴链接');
+    const urls = rawText.split(/[\s\n\r]+/).filter(u => u.length > 0);
     setUrlInput('');
+    await checkAndAddTasks(urls, false);
   };
 
   const handlePause = () => {
@@ -280,16 +323,9 @@ function App() {
       setUrlInput(url);
       appendLog(`\n>>> 🔗 捕获到普通链接，已自动填入！\n`);
     });
-    api.onSilentClipboardMatch((url: string) => {
+    api.onSilentClipboardMatch(async (url: string) => {
       appendLog(`\n>>> 🤫 捕获到外部静默下载指令，已加入队列: ${url}\n`);
-      setTotalTasks(prev => {
-        if (prev === 0 || completedTasks >= prev) {
-          setCompletedTasks(0);
-          return 1;
-        }
-        return prev + 1;
-      });
-      setDownloadQueue(prev => [...prev, { url, isSilent: true }]);
+      await checkAndAddTasks([url], true);
     });
     api.onOpenSettings(() => setIsSettingsModalOpen(true));
   }, [appendLog, processQueue]);
@@ -385,11 +421,11 @@ function App() {
           </button>
           <button
             className="shortcut-btn"
-            onClick={() => {
+            onClick={async () => {
               if (!userInfo.mid) return alert('请先扫码登录后再使用此功能');
               const url = `https://space.bilibili.com/${userInfo.mid}/favlist`;
-              setDownloadQueue(prev => [...prev, { url, isSilent: false }]);
-              appendLog(`\n>>> 📂 已将个人收藏夹页加入下载队列...\n`);
+              appendLog(`\n>>> 📂 已触发个人收藏夹全量解析...\n`);
+              await checkAndAddTasks([url], false);
             }}
           >
             <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/></svg>
@@ -404,8 +440,8 @@ function App() {
             onChange={(e) => setUrlInput(e.target.value)}
             placeholder="粘贴视频链接、收藏夹链接 或 播单数字ID (支持多行批量)"
           />
-          <button className="download-btn" onClick={handleDownload} disabled={isDownloading || isPaused || (urlInput.trim() === '' && downloadQueue.length === 0)}>
-            解析并下载
+          <button className="download-btn" onClick={handleDownload} disabled={isDownloading || isPaused || isCheckingDuplicates || (urlInput.trim() === '' && downloadQueue.length === 0)}>
+            {isCheckingDuplicates ? '预查重中...' : '解析并下载'}
           </button>
         </div>
 
@@ -491,6 +527,18 @@ function App() {
           initialSettings={settings}
           onSave={saveSettings}
           onClose={() => setIsSettingsModalOpen(false)}
+        />
+      )}
+
+      {/* Duplicate Check Modal */}
+      {isDuplicateModalOpen && (
+        <DuplicateModal
+          results={duplicateResults}
+          onConfirm={() => {
+            addToQueue(pendingTasks);
+            setIsDuplicateModalOpen(false);
+          }}
+          onClose={() => setIsDuplicateModalOpen(false)}
         />
       )}
     </>
@@ -608,6 +656,52 @@ function SettingsModal({
         <div style={{ marginTop: '30px' }}>
           <button className="modal-btn btn-save" onClick={() => onSave(tempSettings)} style={{ width: 100 + '%' }}>
             保存并应用
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DuplicateModal({ 
+  results, 
+  onConfirm, 
+  onClose 
+}: { 
+  results: { bvid: string, title: string, isDownloaded: boolean }[], 
+  onConfirm: () => void, 
+  onClose: () => void 
+}) {
+  const duplicates = results.filter(r => r.isDownloaded);
+
+  return (
+    <div className="modal-overlay active">
+      <div className="modal-content" style={{ width: '450px', maxHeight: '500px' }}>
+        <h3 style={{ marginTop: 0, color: '#ff9800' }}>⚠️ 检查到重复资源 ({duplicates.length} 个)</h3>
+        <p style={{ fontSize: '13px', color: '#ccc' }}>以下 {duplicates.length} 个视频在下载历史记录中已存在：</p>
+        
+        <div className="duplicate-list" style={{ 
+          background: '#1a1a1a', 
+          padding: '10px', 
+          borderRadius: '6px', 
+          maxHeight: '200px', 
+          overflowY: 'auto',
+          fontSize: '12px',
+          textAlign: 'left'
+        }}>
+          {duplicates.map((item, idx) => (
+            <div key={idx} style={{ marginBottom: '8px', borderBottom: '1px solid #333', paddingBottom: '4px' }}>
+              <span style={{ color: '#aaa' }}>[{item.bvid}]</span> {item.title}
+            </div>
+          ))}
+        </div>
+
+        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <button className="modal-btn btn-save" onClick={onConfirm} style={{ background: '#ff9800' }}>
+            继续下载
+          </button>
+          <button className="modal-btn btn-cancel" onClick={onClose}>
+            取消本次下载
           </button>
         </div>
       </div>
