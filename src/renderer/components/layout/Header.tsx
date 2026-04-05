@@ -4,9 +4,10 @@ interface HeaderProps {
   userInfo: UserInfo;
   onLogin: () => void;
   onOpenSettings: () => void;
+  onLogout: () => void;
 }
 
-export function Header({ userInfo, onLogin, onOpenSettings }: HeaderProps) {
+export function Header({ userInfo, onLogin, onOpenSettings, onLogout }: HeaderProps) {
   return (
     <header>
       <div className="app-title">📺 Bilibili Downloader</div>
@@ -17,7 +18,11 @@ export function Header({ userInfo, onLogin, onOpenSettings }: HeaderProps) {
               扫码登录
             </button>
           ) : (
-            <div className="user-profile">
+            <div className="user-profile" title="点击退出登录" onClick={() => {
+              if (confirm('确定要退出登录并清除 Cookie 吗？')) {
+                onLogout();
+              }
+            }} style={{ cursor: 'pointer' }}>
               <img src={userInfo.face} alt="" />
               <span>{userInfo.uname}</span>
             </div>

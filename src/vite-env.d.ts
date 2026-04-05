@@ -9,6 +9,7 @@ interface IElectronAPI {
   getQRCode: () => Promise<{ success: boolean; imgData?: string; key?: string; error?: string }>;
   checkLogin: (key: string) => Promise<{ status: string; msg?: string }>;
   getUserInfo: () => Promise<{ isLogin: boolean; uname?: string; face?: string; mid?: number }>;
+  logout: () => Promise<{ success: boolean }>;
   getDefaultFavId: () => Promise<number | null>;
   checkDownloadHistory: (url: string) => Promise<{ bvid: string; title: string; isDownloaded: boolean }[]>;
   openExternal: (url: string) => void;

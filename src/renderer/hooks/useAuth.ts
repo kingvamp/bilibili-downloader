@@ -37,6 +37,12 @@ export function useAuth(appendLog: (msg: string) => void) {
     }, 3000);
   };
 
+  const handleLogout = async () => {
+    await window.api.logout();
+    setUserInfo({ isLogin: false });
+    appendLog(`>>> 🚪 已退出登录并清除当前凭据，请重新扫码获取新凭据\n`);
+  };
+
   useEffect(() => {
     checkUserStatus();
     return () => {
@@ -51,5 +57,7 @@ export function useAuth(appendLog: (msg: string) => void) {
     setIsLoginModalOpen,
     startLogin,
     checkUserStatus,
+    handleLogout,
   };
+
 }

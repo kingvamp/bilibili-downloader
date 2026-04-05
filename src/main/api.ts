@@ -24,8 +24,27 @@ export function setupApi() {
           mid: res.data.data.mid
         };
       }
+      
+      // Cookie 已过期或被踢下线，自动清理
+      state.sessionCookie = '';
+      if (fs.existsSync(AppPaths.cookiePath)) {
+        fs.unlinkSync(AppPaths.cookiePath);
+      }
       return { isLogin: false };
-    } catch (e: any) { return { isLogin: false, error: e.message }; }
+    } catch (e: any) { 
+      return { isLogin: false, error: e.message }; 
+    }
+  });
+
+  // 手动退出登录
+  ipcMain.handle('logout', async () => {
+    state.sessionCookie = '';
+    try {
+      if (fs.existsSync(AppPaths.cookiePath)) {
+        fs.unlinkSync(AppPaths.cookiePath);
+      }
+    } catch (e) {}
+    return { success: true };
   });
 
   ipcMain.handle('get-default-fav-id', async () => {

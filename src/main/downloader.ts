@@ -82,6 +82,7 @@ export function setupDownloader() {
                 const child = spawn(downloaderPath, [url, '--only-show-info']);
                 const decoder = new TextDecoder('gbk');
                 let out = '';
+
                 child.stdout.on('data', (d) => out += decoder.decode(d));
                 child.stderr.on('data', (d) => out += decoder.decode(d));
                 child.on('close', () => resolve(out));
@@ -142,7 +143,9 @@ export function setupDownloader() {
 
     if (!dlSub) {
         args.push('--skip-subtitle');
-    } 
+    }
+
+
 
     if (isMultiThread) {
         args.push('-mt');

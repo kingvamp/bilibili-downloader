@@ -52,6 +52,7 @@ function App() {
     isLoginModalOpen,
     setIsLoginModalOpen,
     startLogin,
+    handleLogout,
   } = useAuth(appendLog);
 
   // Listeners
@@ -65,6 +66,7 @@ function App() {
         userInfo={userInfo} 
         onLogin={startLogin} 
         onOpenSettings={() => setIsSettingsModalOpen(true)} 
+        onLogout={handleLogout}
       />
 
       <main>

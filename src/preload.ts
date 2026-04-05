@@ -17,9 +17,11 @@ contextBridge.exposeInMainWorld('api', {
   
   getQRCode: () => ipcRenderer.invoke('get-qrcode'),
   checkLogin: (key: string) => ipcRenderer.invoke('check-login', key),
+
   getUserInfo: () => ipcRenderer.invoke('get-user-info'),
+  logout: () => ipcRenderer.invoke('logout'),
   getDefaultFavId: () => ipcRenderer.invoke('get-default-fav-id'),
-  openExternal: (url: string) => ipcRenderer.send('open-external', url),
+
   
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   scanFolderForHistory: () => ipcRenderer.invoke('scan-folder-for-history'),
