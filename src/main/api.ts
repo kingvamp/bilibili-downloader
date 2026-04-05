@@ -97,9 +97,18 @@ export function setupApi() {
         } else if (stats.isFile()) {
           // 匹配视频和音频常用后缀
           if (/\.(mp4|flv|mkv|mp3|m4a|xml|ass)$/i.test(file)) {
-            const match = file.match(/BV[a-zA-Z0-9]{10}/i);
-            if (match) {
-              foundBvids.add(match[0]);
+            const matchBv = file.match(/BV[a-zA-Z0-9]{10}/i);
+            if (matchBv) {
+              foundBvids.add(matchBv[0]);
+            } else {
+              const matchAv = file.match(/av(\d+)/i);
+              if (matchAv) {
+                 try {
+                   const { avToBv } = require('../renderer/utils/bilibili');
+                   const bvid = avToBv(matchAv[1]);
+                   foundBvids.add(bvid);
+                 } catch (e) { console.error('avToBv convert error:', e); }
+              }
             }
           }
         }

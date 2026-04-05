@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { DownloadTask, Settings, DuplicateResult } from '../types';
+import { avToBv } from '../utils/bilibili';
 
 export function useDownload(settings: Settings) {
   const [logs, setLogs] = useState<string>('等待任务...');
@@ -100,8 +101,27 @@ export function useDownload(settings: Settings) {
     const rawText = urlInput.trim();
     if (!rawText) return alert('请在上方输入框内粘贴链接');
     const urls = rawText.split(/[\s\n\r]+/).filter(u => u.length > 0);
+
+    // 自动转换 AV 为 BV 号：虽然 BBDown 原生支持 AV 号下载，但在 UI 层统
+    // 一转换为 BV 号，可以确保本地的“下载历史记录(download_history.txt)”中格式唯一，
+    // 从而保证重复检查（去重提醒）功能准确无误。
+    const processedUrls = await Promise.all(urls.map(async (u) => {
+      // 匹配 av123 或单纯数字 123
+      if (/^(av)?\d+$/i.test(u)) {
+        try {
+          const aid = u.toLowerCase().replace('av', '');
+          const bvid = avToBv(aid);
+          appendLog(`\n>>> 🔄 已自动将 AV${aid} 转换为 ${bvid} (用于统一历史记录)\n`);
+          return bvid;
+        } catch (e) {
+          return u;
+        }
+      }
+      return u;
+    }));
+
     setUrlInput('');
-    await checkAndAddTasks(urls, false);
+    await checkAndAddTasks(processedUrls, false);
   };
 
   const handlePause = () => {
