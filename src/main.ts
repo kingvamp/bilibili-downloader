@@ -362,6 +362,20 @@ ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSile
       if (code === 0 && isSilent) {
           clipboard.writeText(`Enhancer_Download_Finished||${rawUrl}`);
       }
+      
+      // 【新增】保存下载成功的 BV 号
+      if (code === 0) {
+          const bvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/i);
+          if (bvidMatch) {
+              try {
+                  const historyPath = path.join(app.getPath('userData'), 'download_history.txt');
+                  fs.appendFileSync(historyPath, bvidMatch[0] + '\n');
+              } catch (e) {
+                  console.error('保存BV号失败', e);
+              }
+          }
+      }
+      
       event.sender.send('download-complete', code);
   });
   

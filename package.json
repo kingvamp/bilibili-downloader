@@ -51,6 +51,7 @@
     ],
     "files": [
       "dist/**/*",
+      "dist-electron/**/*",
       "index.html",
       "icon.ico"
     ],
