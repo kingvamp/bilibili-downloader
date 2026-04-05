@@ -1,4 +1,4 @@
-import { ipcMain, dialog } from 'electron';
+import { ipcMain, dialog, shell } from 'electron';
 import axios from 'axios';
 import QRCode from 'qrcode';
 import fs from 'fs';
@@ -64,6 +64,34 @@ export function setupApi() {
       }
       return null;
     } catch (e) { return null; }
+  });
+
+  ipcMain.handle('collect-to-fav-folder', async (event, aid: number, folderId: number) => {
+    if (!state.sessionCookie) return { success: false, message: '请先登录' };
+    try {
+      const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
+      if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
+
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
+        'Cookie': state.sessionCookie,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      };
+
+      const res = await axios.post(
+        'https://api.bilibili.com/x/v3/fav/resource/deal',
+        `rid=${aid}&type=2&add_media_ids=${folderId}&del_media_ids=&platform=web&jsonp=jsonp&csrf=${csrf}`,
+        { headers }
+      );
+
+      if (res.data.code === 0) {
+        return { success: true };
+      } else {
+        return { success: false, message: res.data.message || '收藏失败' };
+      }
+    } catch (e: any) {
+      return { success: false, message: e.message };
+    }
   });
 
   ipcMain.handle('get-qrcode', async () => {
@@ -160,6 +188,10 @@ export function setupApi() {
     } catch (error: any) {
       return { success: false, message: error.message };
     }
+  });
+
+  ipcMain.on('open-external', (_event, url) => {
+    shell.openExternal(url);
   });
 }
 

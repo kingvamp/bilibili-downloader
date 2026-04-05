@@ -44,6 +44,7 @@ function App() {
     handleStop,
     checkAndAddTasks,
     handleDetectFavlist,
+    handleCollectAll,
     isDetecting,
     isMissingVideosModalOpen,
     setIsMissingVideosModalOpen,
@@ -142,6 +143,7 @@ function App() {
             checkAndAddTasks(missing.map(m => m.bvid), false);
             setIsMissingVideosModalOpen(false);
           }}
+          onCollectAll={handleCollectAll}
           onClose={() => setIsMissingVideosModalOpen(false)}
         />
       )}

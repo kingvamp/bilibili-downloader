@@ -11,7 +11,8 @@ interface IElectronAPI {
   getUserInfo: () => Promise<{ isLogin: boolean; uname?: string; face?: string; mid?: number }>;
   logout: () => Promise<{ success: boolean }>;
   getDefaultFavId: () => Promise<number | null>;
-  checkDownloadHistory: (url: string) => Promise<{ bvid: string; title: string; isDownloaded: boolean }[]>;
+  collectToFavFolder: (aid: number, folderId: number) => Promise<{ success: boolean; message?: string }>;
+  checkDownloadHistory: (url: string) => Promise<{ bvid: string; aid?: number; title: string; isDownloaded: boolean }[]>;
   openExternal: (url: string) => void;
   
   selectFolder: () => Promise<string | null>;

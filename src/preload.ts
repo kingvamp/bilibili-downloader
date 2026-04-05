@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('download-complete');
     ipcRenderer.on('download-complete', (_event: IpcRendererEvent, value: number) => callback(value));
   },
+  openExternal: (url: string) => ipcRenderer.send('open-external', url),
   
   getQRCode: () => ipcRenderer.invoke('get-qrcode'),
   checkLogin: (key: string) => ipcRenderer.invoke('check-login', key),
@@ -21,6 +22,7 @@ contextBridge.exposeInMainWorld('api', {
   getUserInfo: () => ipcRenderer.invoke('get-user-info'),
   logout: () => ipcRenderer.invoke('logout'),
   getDefaultFavId: () => ipcRenderer.invoke('get-default-fav-id'),
+  collectToFavFolder: (aid: number, folderId: number) => ipcRenderer.invoke('collect-to-fav-folder', aid, folderId),
 
   
   selectFolder: () => ipcRenderer.invoke('select-folder'),

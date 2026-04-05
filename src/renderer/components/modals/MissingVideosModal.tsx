@@ -3,12 +3,14 @@ import { DuplicateResult } from '../../types';
 interface MissingVideosModalProps {
   results: DuplicateResult[];
   onDownloadAll: () => void;
+  onCollectAll: () => void;
   onClose: () => void;
 }
 
 export function MissingVideosModal({ 
   results, 
   onDownloadAll, 
+  onCollectAll,
   onClose 
 }: MissingVideosModalProps) {
   const missing = results.filter(r => !r.isDownloaded);
@@ -48,9 +50,18 @@ export function MissingVideosModal({
 
         <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {missing.length > 0 && (
-            <button className="modal-btn btn-save" onClick={onDownloadAll}>
-              下载全部未下载视频
-            </button>
+            <>
+              <button className="modal-btn btn-save" onClick={onDownloadAll}>
+                直接下载全部未下载视频
+              </button>
+              <button 
+                className="modal-btn" 
+                style={{ background: '#f60', color: '#fff' }} 
+                onClick={onCollectAll}
+              >
+                一键转存至默认收藏夹 (推荐，可破412错误)
+              </button>
+            </>
           )}
           <button className="modal-btn btn-cancel" onClick={onClose}>
             关闭

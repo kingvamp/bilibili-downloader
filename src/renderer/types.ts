@@ -22,6 +22,7 @@ export interface DownloadTask {
 
 export interface DuplicateResult {
   bvid: string;
+  aid?: number;
   title: string;
   isDownloaded: boolean;
 }

@@ -155,6 +155,51 @@ export function useDownload(settings: Settings) {
     }
   };
 
+  const handleCollectAll = async () => {
+    const missing = missingVideosResult.filter(r => !r.isDownloaded);
+    if (missing.length === 0) return;
+
+    const confirm = window.confirm(`确定要将这 ${missing.length} 个视频全部转存到你的“默认收藏夹”吗？\n(转存成功后，你可以直接点击“下载默认收藏夹”进行稳定下载)`);
+    if (!confirm) return;
+
+    setIsMissingVideosModalOpen(false);
+    appendLog(`\n>>> 📁 正在尝试将 ${missing.length} 个视频转存至默认收藏夹...\n`);
+    
+    try {
+      const folderId = await window.api.getDefaultFavId();
+      if (!folderId) {
+        throw new Error('未能获取到默认收藏夹 ID，请确认是否已登录');
+      }
+
+      let successCount = 0;
+      for (let i = 0; i < missing.length; i++) {
+        const item = missing[i];
+        if (!item.aid) {
+          appendLog(`>>> ⚠️ 跳过 ${item.bvid}: 未能获取到 AID\n`);
+          continue;
+        }
+        
+        const res = await window.api.collectToFavFolder(item.aid, folderId);
+        if (res.success) {
+          successCount++;
+          appendLog(`>>> [${i + 1}/${missing.length}] ✅ 已转存: ${item.title}\n`);
+        } else {
+          appendLog(`>>> [${i + 1}/${missing.length}] ❌ 失败: ${item.title} (${res.message})\n`);
+        }
+        // 稍微延迟一下防止触发频率限制
+        await new Promise(r => setTimeout(r, 300));
+      }
+
+      appendLog(`>>> 🏁 转存处理完毕。成功: ${successCount}，失败: ${missing.length - successCount}\n`);
+      if (successCount > 0) {
+        appendLog(`>>> ✨ 现在你可以点击“下载默认收藏夹”来稳定下载这些视频了！\n`);
+      }
+    } catch (e: any) {
+      appendLog(`>>> ❌ 转存操作发生错误: ${e.message}\n`);
+      alert('转存失败: ' + e.message);
+    }
+  };
+
   const handlePause = () => {
     isPausedRef.current = true;
     window.api.stopDownload();
@@ -294,6 +339,7 @@ export function useDownload(settings: Settings) {
     handleStop,
     checkAndAddTasks,
     handleDetectFavlist,
+    handleCollectAll,
     isDetecting,
     isMissingVideosModalOpen,
     setIsMissingVideosModalOpen,

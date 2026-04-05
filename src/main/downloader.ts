@@ -10,15 +10,20 @@ export function setupDownloader() {
   ipcMain.handle('check-download-history', async (event, url: string) => {
     if (!url) return [];
     
-    // 1. 加载现有历史记录
+    // 1. 加载现有历史记录 (统一转大写用于大小写无关比对)
     let existingHistory = '';
     try { existingHistory = fs.readFileSync(AppPaths.historyPath, 'utf8'); } catch (e) {}
-    const historySet = new Set(existingHistory.split('\n').map(s => s.trim()).filter(Boolean));
-    const results: { bvid: string, title: string, isDownloaded: boolean }[] = [];
+    const historySet = new Set(existingHistory.split('\n').map(s => s.trim().toUpperCase()).filter(Boolean));
+    const results: { bvid: string, aid?: number, title: string, isDownloaded: boolean }[] = [];
 
     const headers = { 
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie || ''
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Cookie': state.sessionCookie || '',
+        'Referer': 'https://www.bilibili.com/',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+        'Origin': 'https://www.bilibili.com',
+        'Connection': 'keep-alive'
     };
 
     try {
@@ -29,7 +34,8 @@ export function setupDownloader() {
         const midMatch = url.match(/space\.bilibili\.com\/(\d+)\/favlist/);
         
         let mediaId = mlMatch ? mlMatch[1] : null;
-        if (!mediaId && midMatch) {
+        // 只有当 URL 包含 space/favlist 字样时才尝试空间接口，避免普通视频 ID 误撞
+        if (!mediaId && midMatch && url.includes('favlist')) {
             const res = await axios.get(`https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${midMatch[1]}`, { headers });
             if (res.data.code === 0 && res.data.data.list?.length > 0) {
                 mediaId = res.data.data.list[0].id;
@@ -62,16 +68,19 @@ export function setupDownloader() {
 
                         for (const m of medias) {
                             totalProcessed++;
-                            // v1 与 v3 的字段可能略有不同，v3 是 bv_id, v1 可能是 bv_id
+                            // v1 与 v3 的字段可能略有不同
                             const bvid = m.bv_id || m.bvid;
+                            const aid = m.id; // B 站 API 通常 id 就是 aid
                             if (!bvid) continue;
 
-                            const isDownloaded = historySet.has(bvid);
-                            const isNewInResults = !results.some(r => r.bvid.toUpperCase() === bvid.toUpperCase());
+                            const bvidUpper = bvid.toUpperCase();
+                            const isDownloaded = historySet.has(bvidUpper);
+                            const isNewInResults = !results.some(r => r.bvid.toUpperCase() === bvidUpper);
                             
                             if (isNewInResults) {
                                 results.push({
                                     bvid: bvid,
+                                    aid: aid,
                                     title: m.title,
                                     isDownloaded
                                 });
@@ -86,8 +95,8 @@ export function setupDownloader() {
                             break;
                         }
 
-                        // 不要在这里 break，有些 API 返回不满 ps 之后可能还有
-                        // 统一在开头 medias.length === 0 处退出
+                        // [防风控] 每翻一页，稍微喘口气 (600ms 随机延迟)
+                        await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
                     } else {
                         event.sender.send('download-progress', `>>> ⚠️ 第 ${pn} 页数据格式异常或拉取失败\n`);
                         break;
@@ -103,11 +112,13 @@ export function setupDownloader() {
         const urlBvidMatch = url.match(/BV[a-zA-Z0-9]{10}/i);
         if (urlBvidMatch && results.length === 0) {
             const bvid = urlBvidMatch[0];
+            const isDownloaded = historySet.has(bvid.toUpperCase());
             results.push({
                 bvid,
                 title: bvid,
-                isDownloaded: historySet.has(bvid)
+                isDownloaded
             });
+            event.sender.send('download-progress', `>>> 🔍 已识别单视频: ${bvid} ${isDownloaded ? '(历史记录已存在)' : '(新任务)'}\n`);
         }
 
         // --- 策略 C: 兜底使用 BBDown (仅在 A/B 无结论时执行) ---
@@ -198,7 +209,10 @@ export function setupDownloader() {
         args.push('--multi-file-pattern', '<videoTitle> - P<pageNumberWithZero> <pageTitle> [<bvid>]');
     }
 
-    if (state.sessionCookie) args.push('-c', state.sessionCookie);
+    if (state.sessionCookie) {
+        args.push('-ua', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
+        args.push('-c', state.sessionCookie);
+    }
 
     if (state.currentChild) {
         state.currentChild.kill();
@@ -256,16 +270,20 @@ async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlB
             let existingHistory = '';
             try { existingHistory = await fs.promises.readFile(historyPath, 'utf8'); } catch (e) {}
             
-            const lines = existingHistory.split('\n').map(s => s.trim()).filter(Boolean);
+            // 归一化为大写进行比对
+            const lines = existingHistory.split('\n').map(s => s.trim().toUpperCase()).filter(Boolean);
             const existingSet = new Set(lines);
             let changed = false;
             
             // 1. 如果任务彻底完成 (code 0)，且输入是单视频 URL，确保将其记入历史
             if (forceAddUrlBv) {
                 const rawBvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/i);
-                if (rawBvidMatch && !existingSet.has(rawBvidMatch[0])) {
-                    existingSet.add(rawBvidMatch[0]);
-                    changed = true;
+                if (rawBvidMatch) {
+                    const bvidUpper = rawBvidMatch[0].toUpperCase();
+                    if (!existingSet.has(bvidUpper)) {
+                        existingSet.add(bvidUpper);
+                        changed = true;
+                    }
                 }
             }
             
@@ -275,9 +293,9 @@ async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlB
                 if (file.match(/\.(mp4|flv|mkv|mp3|m4a)$/i)) {
                     const bvidMatch = file.match(/BV[a-zA-Z0-9]{10}/i);
                     if (bvidMatch) {
-                        const bvid = bvidMatch[0];
-                        if (!existingSet.has(bvid)) {
-                            existingSet.add(bvid);
+                        const bvidUpper = bvidMatch[0].toUpperCase();
+                        if (!existingSet.has(bvidUpper)) {
+                            existingSet.add(bvidUpper);
                             changed = true;
                         }
                     }
