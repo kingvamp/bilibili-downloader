@@ -300,6 +300,51 @@ ipcMain.handle('check-login', async (event, qrcode_key) => {
   } catch (error) { return { status: 'error' }; }
 });
 
+// 【新增】扫描目录提取已下载的 BV 号历史记录函数
+function syncDownloadHistory(workDir: string, rawUrl: string) {
+    try {
+        const syncDir = workDir || './downloads';
+        if (fs.existsSync(syncDir)) {
+            const files = fs.readdirSync(syncDir);
+            const historyPath = path.join(app.getPath('userData'), 'download_history.txt');
+            
+            let existingHistory = '';
+            try { existingHistory = fs.readFileSync(historyPath, 'utf8'); } catch (e) {}
+            const existingSet = new Set(existingHistory.split('\n').map(s => s.trim()).filter(Boolean));
+            let addedBvids = false;
+            let newHistoryStr = existingHistory;
+            
+            const rawBvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/i);
+            if (rawBvidMatch && !existingSet.has(rawBvidMatch[0])) {
+                existingSet.add(rawBvidMatch[0]);
+                newHistoryStr += rawBvidMatch[0] + '\n';
+                addedBvids = true;
+            }
+            
+            for (const file of files) {
+                // 只找最终的格式，忽略临时的 .ts / .aria2 等分片文件
+                if (file.match(/\.(mp4|flv|mkv|mp3|m4a)$/i)) {
+                    const bvidMatch = file.match(/BV[a-zA-Z0-9]{10}/i);
+                    if (bvidMatch) {
+                        const bvid = bvidMatch[0];
+                        if (!existingSet.has(bvid)) {
+                            existingSet.add(bvid);
+                            newHistoryStr += bvid + '\n';
+                            addedBvids = true;
+                        }
+                    }
+                }
+            }
+            
+            if (addedBvids) {
+                fs.writeFileSync(historyPath, newHistoryStr, 'utf8');
+            }
+        }
+    } catch (e) {
+        console.error('Sync BV history error:', e);
+    }
+}
+
 ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSilent, isMultiThread) => {
   if (!rawUrl) return;
 
@@ -358,22 +403,14 @@ ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSile
       if (currentChild === child) {
           currentChild = null;
       }
+      
+      // 【新增】扫描下载目录并提取已经完成的下载文件中的 BV 号
+      // 因为文件命名中自带 [bvid]，这种方式可以记录下当前真实生成的所有文件（即使是意外中断的批处理列表也能抓取到已经完成的那部分）
+      syncDownloadHistory(workDir, rawUrl);
+
       // 【修改】只保留静默剪贴板反写的逻辑，将通知外移
       if (code === 0 && isSilent) {
           clipboard.writeText(`Enhancer_Download_Finished||${rawUrl}`);
-      }
-      
-      // 【新增】保存下载成功的 BV 号
-      if (code === 0) {
-          const bvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/i);
-          if (bvidMatch) {
-              try {
-                  const historyPath = path.join(app.getPath('userData'), 'download_history.txt');
-                  fs.appendFileSync(historyPath, bvidMatch[0] + '\n');
-              } catch (e) {
-                  console.error('保存BV号失败', e);
-              }
-          }
       }
       
       event.sender.send('download-complete', code);
