@@ -11,6 +11,7 @@ import { DownloadForm } from './components/sections/DownloadForm';
 import { LoginModal } from './components/modals/LoginModal';
 import { SettingsModal } from './components/modals/SettingsModal';
 import { DuplicateModal } from './components/modals/DuplicateModal';
+import { MissingVideosModal } from './components/modals/MissingVideosModal';
 
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -42,6 +43,11 @@ function App() {
     handleResume,
     handleStop,
     checkAndAddTasks,
+    handleDetectFavlist,
+    isDetecting,
+    isMissingVideosModalOpen,
+    setIsMissingVideosModalOpen,
+    missingVideosResult,
     appendLog,
   } = useDownload(settings);
 
@@ -83,6 +89,8 @@ function App() {
           onResume={handleResume}
           onStop={handleStop}
           onCheckAndAddTasks={checkAndAddTasks}
+          onDetectFavlist={handleDetectFavlist}
+          isDetecting={isDetecting}
           appendLog={appendLog}
         />
 
@@ -123,6 +131,18 @@ function App() {
             setIsDuplicateModalOpen(false);
           }}
           onClose={() => setIsDuplicateModalOpen(false)}
+        />
+      )}
+
+      {isMissingVideosModalOpen && (
+        <MissingVideosModal
+          results={missingVideosResult}
+          onDownloadAll={() => {
+            const missing = missingVideosResult.filter(r => !r.isDownloaded);
+            checkAndAddTasks(missing.map(m => m.bvid), false);
+            setIsMissingVideosModalOpen(false);
+          }}
+          onClose={() => setIsMissingVideosModalOpen(false)}
         />
       )}
     </>

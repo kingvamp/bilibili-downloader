@@ -22,15 +22,14 @@ export function setupDownloader() {
     };
 
     try {
-        // --- 策略 A: 识别常见的 B 站列表 URL 并直接调 API (秒开且覆盖率高) ---
+        // --- 策略 A: 识别常见的 B 站列表 URL 并直接调 API (支持翻页且含阈值) ---
         
-        // 收藏夹 (favlist / medialist/play/ml)
-        const mlMatch = url.match(/ml(\d+)/) || url.match(/fid=(\d+)/);
+        // 匹配逻辑：ml号, fid=号, 或者是纯数字的 fid
+        const mlMatch = url.match(/ml(\d+)/) || url.match(/fid=(\d+)/) || url.match(/^(\d+)$/);
         const midMatch = url.match(/space\.bilibili\.com\/(\d+)\/favlist/);
         
         let mediaId = mlMatch ? mlMatch[1] : null;
         if (!mediaId && midMatch) {
-            // 如果是个人收藏页，先查出默认收藏夹 ID
             const res = await axios.get(`https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${midMatch[1]}`, { headers });
             if (res.data.code === 0 && res.data.data.list?.length > 0) {
                 mediaId = res.data.data.list[0].id;
@@ -38,42 +37,80 @@ export function setupDownloader() {
         }
 
         if (mediaId) {
-            // 获取收藏夹内 BV (分多页抓取，这里默认抓取前 5 页合计 100 个视频，兼顾性能与覆盖)
-            for (let pn = 1; pn <= 5; pn++) {
-                const res = await axios.get(`https://api.bilibili.com/x/v3/fav/resource/list?media_id=${mediaId}&ps=20&pn=${pn}`, { headers });
-                if (res.data.code === 0 && res.data.data.medias) {
-                    for (const m of res.data.data.medias) {
-                        if (!results.some(r => r.bvid === m.bv_id)) {
-                            results.push({
-                                bvid: m.bv_id,
-                                title: m.title,
-                                isDownloaded: historySet.has(m.bv_id)
-                            });
+            // 记录扫描结果
+            let totalProcessed = 0;
+            // 判断是否为新版 Medialist (ml开头通常为 medialist)
+            const isMedialist = url.includes('ml') || url.includes('medialist');
+            const apiUrl = isMedialist 
+                ? `https://api.bilibili.com/x/v1/medialist/resource/list?mlid=${mediaId}`
+                : `https://api.bilibili.com/x/v3/fav/resource/list?media_id=${mediaId}`;
+
+            event.sender.send('download-progress', `>>> ⚙️ 使用 ${isMedialist ? 'Medialist(v1)' : 'FavFolder(v3)'} 协议扫描 ID: ${mediaId}\n`);
+
+            for (let pn = 1; pn <= 100; pn++) {
+                try {
+                    const res = await axios.get(`${apiUrl}&ps=20&pn=${pn}`, { headers, timeout: 8000 });
+                    
+                    if (res.data.code === 0 && (res.data.data.medias || res.data.data.list)) {
+                        // v1/medialist 使用 data.list, v3/fav 使用 data.medias
+                        const medias = res.data.data.medias || res.data.data.list || [];
+                        
+                        if (medias.length === 0) {
+                            event.sender.send('download-progress', `>>> ⏹️ 已分析至末尾 (总数: ${totalProcessed})\n`);
+                            break;
                         }
+
+                        for (const m of medias) {
+                            totalProcessed++;
+                            // v1 与 v3 的字段可能略有不同，v3 是 bv_id, v1 可能是 bv_id
+                            const bvid = m.bv_id || m.bvid;
+                            if (!bvid) continue;
+
+                            const isDownloaded = historySet.has(bvid);
+                            const isNewInResults = !results.some(r => r.bvid.toUpperCase() === bvid.toUpperCase());
+                            
+                            if (isNewInResults) {
+                                results.push({
+                                    bvid: bvid,
+                                    title: m.title,
+                                    isDownloaded
+                                });
+                            }
+                        }
+
+                        const missingCount = results.filter(r => !r.isDownloaded).length;
+                        event.sender.send('download-progress', `>>> 📄 分析第 ${pn} 页: 当前已分析 ${totalProcessed} 个，发现 ${missingCount} 个未下载。\n`);
+
+                        if (missingCount >= 20) {
+                            event.sender.send('download-progress', `>>> ⚠️ 未下载列表达到 20 条阈值上限，暂停更深层的扫描。\n`);
+                            break;
+                        }
+
+                        // 不要在这里 break，有些 API 返回不满 ps 之后可能还有
+                        // 统一在开头 medias.length === 0 处退出
+                    } else {
+                        event.sender.send('download-progress', `>>> ⚠️ 第 ${pn} 页数据格式异常或拉取失败\n`);
+                        break;
                     }
-                    // 如果这页没满，说明后面没了
-                    if (res.data.data.medias.length < 20) break;
-                } else {
+                } catch (err: any) {
+                    event.sender.send('download-progress', `>>> ❌ 第 ${pn} 页拉取异常: ${err.message}\n`);
                     break;
                 }
             }
         }
 
-        // --- 策略 B: 单视频 BV 号直接提取 (无视 BBDown 是否报错) ---
+        // --- 策略 B: 单视频 BV 号直接提取 (单任务不涉及翻页) ---
         const urlBvidMatch = url.match(/BV[a-zA-Z0-9]{10}/i);
-        if (urlBvidMatch) {
+        if (urlBvidMatch && results.length === 0) {
             const bvid = urlBvidMatch[0];
-            if (!results.some(r => r.bvid === bvid)) {
-                results.push({
-                    bvid,
-                    title: bvid,
-                    isDownloaded: historySet.has(bvid)
-                });
-            }
+            results.push({
+                bvid,
+                title: bvid,
+                isDownloaded: historySet.has(bvid)
+            });
         }
 
-        // --- 策略 C: 兜底使用 BBDown --only-show-info ---
-        // 只有当 A/B 都没结果，或者可能存在多P/合集时才使用
+        // --- 策略 C: 兜底使用 BBDown (仅在 A/B 无结论时执行) ---
         if (results.length === 0) {
             const binDir = app.isPackaged ? path.join(process.resourcesPath, 'bin') : path.join(__dirname, '../bin');
             const downloaderPath = path.join(binDir, 'BBDown.exe');
@@ -86,7 +123,7 @@ export function setupDownloader() {
                 child.stdout.on('data', (d) => out += decoder.decode(d));
                 child.stderr.on('data', (d) => out += decoder.decode(d));
                 child.on('close', () => resolve(out));
-                setTimeout(() => { child.kill(); resolve(out); }, 10000); // 10秒强制超时保护
+                setTimeout(() => { child.kill(); resolve(out); }, 15000); 
             });
 
             const bvidMatches = infoOutput.match(/BV[a-zA-Z0-9]{10}/ig);

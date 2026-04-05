@@ -18,6 +18,10 @@ export function useDownload(settings: Settings) {
   const [duplicateResults, setDuplicateResults] = useState<DuplicateResult[]>([]);
   const [pendingTasks, setPendingTasks] = useState<DownloadTask[]>([]);
 
+  const [isDetecting, setIsDetecting] = useState(false);
+  const [isMissingVideosModalOpen, setIsMissingVideosModalOpen] = useState(false);
+  const [missingVideosResult, setMissingVideosResult] = useState<DuplicateResult[]>([]);
+
   const logRef = useRef<HTMLDivElement>(null);
   const currentTaskRef = useRef<DownloadTask | null>(null);
   const isPausedRef = useRef(false);
@@ -122,6 +126,33 @@ export function useDownload(settings: Settings) {
 
     setUrlInput('');
     await checkAndAddTasks(processedUrls, false);
+  };
+
+  const handleDetectFavlist = async () => {
+    const rawText = urlInput.trim();
+    if (!rawText) return alert('请先在输入框粘贴 收藏夹链接 或 FID 数字');
+    
+    setIsDetecting(true);
+    appendLog(`\n>>> 🔍 正在深度扫描收藏夹全量列表，请稍候...\n`);
+
+    try {
+      // main 进程已处理分页逻辑与 20 条阈值停止逻辑
+      const results = await window.api.checkDownloadHistory(rawText);
+      const isMissing = results.filter(r => !r.isDownloaded);
+      
+      if (results.length === 0) {
+        appendLog(`>>> ⚠️ 未能从该地址中解析出有效的视频列表，请检查输入。\n`);
+      } else {
+        setMissingVideosResult(results);
+        setIsMissingVideosModalOpen(true);
+        appendLog(`>>> ✅ 扫描完成，发现 ${isMissing.length} 个未下载视频。\n`);
+      }
+    } catch (e: any) {
+      alert('检测失败: ' + e.message);
+    } finally {
+      setIsDetecting(false);
+      setUrlInput('');
+    }
   };
 
   const handlePause = () => {
@@ -262,6 +293,11 @@ export function useDownload(settings: Settings) {
     handleResume,
     handleStop,
     checkAndAddTasks,
+    handleDetectFavlist,
+    isDetecting,
+    isMissingVideosModalOpen,
+    setIsMissingVideosModalOpen,
+    missingVideosResult,
     logRef,
     appendLog,
   };
