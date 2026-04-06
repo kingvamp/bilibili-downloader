@@ -193,10 +193,6 @@ export function setupApi() {
       return { success: false, message: error.message };
     }
   });
-
-  ipcMain.on('open-external', (_event, url) => {
-    shell.openExternal(url);
-  });
 }
 
 function loadCookie(): void {
