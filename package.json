@@ -9,8 +9,8 @@
     "build": "tsc && vite build",
     "start": "electron .",
     "watch": "vite",
-    "pack": "tsc && electron-builder --dir",
-    "dist": "tsc && electron-builder"
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
     "@types/electron": "^1.6.10",
