@@ -10,10 +10,10 @@ export function setupDownloader() {
   ipcMain.handle('check-download-history', async (event, url: string) => {
     if (!url) return [];
     
-    // 1. 加载现有历史记录 (统一转大写用于大小写无关比对)
+    // 1. 加载现有历史记录
     let existingHistory = '';
     try { existingHistory = fs.readFileSync(AppPaths.historyPath, 'utf8'); } catch (e) {}
-    const historySet = new Set(existingHistory.split('\n').map(s => s.trim().toUpperCase()).filter(Boolean));
+    const historySet = new Set(existingHistory.split('\n').map(s => s.trim()).filter(Boolean));
     const results: { bvid: string, aid?: number, title: string, isDownloaded: boolean }[] = [];
 
     const headers = { 
@@ -73,9 +73,8 @@ export function setupDownloader() {
                             const aid = m.id; // B 站 API 通常 id 就是 aid
                             if (!bvid) continue;
 
-                            const bvidUpper = bvid.toUpperCase();
-                            const isDownloaded = historySet.has(bvidUpper);
-                            const isNewInResults = !results.some(r => r.bvid.toUpperCase() === bvidUpper);
+                            const isDownloaded = historySet.has(bvid);
+                            const isNewInResults = !results.some(r => r.bvid === bvid);
                             
                             if (isNewInResults) {
                                 results.push({
@@ -109,10 +108,10 @@ export function setupDownloader() {
         }
 
         // --- 策略 B: 单视频 BV 号直接提取 (单任务不涉及翻页) ---
-        const urlBvidMatch = url.match(/BV[a-zA-Z0-9]{10}/i);
+        const urlBvidMatch = url.match(/BV[a-zA-Z0-9]{10}/);
         if (urlBvidMatch && results.length === 0) {
             const bvid = urlBvidMatch[0];
-            const isDownloaded = historySet.has(bvid.toUpperCase());
+            const isDownloaded = historySet.has(bvid);
             results.push({
                 bvid,
                 title: bvid,
@@ -137,7 +136,7 @@ export function setupDownloader() {
                 setTimeout(() => { child.kill(); resolve(out); }, 15000); 
             });
 
-            const bvidMatches = infoOutput.match(/BV[a-zA-Z0-9]{10}/ig);
+            const bvidMatches = infoOutput.match(/BV[a-zA-Z0-9]{10}/g);
             if (bvidMatches) {
                 for (const bvid of new Set(bvidMatches)) {
                     if (!results.some(r => r.bvid === bvid)) {
@@ -270,21 +269,18 @@ async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlB
             let existingHistory = '';
             try { existingHistory = await fs.promises.readFile(historyPath, 'utf8'); } catch (e) {}
             
-            // 归一化为大写进行比对
-            const lines = existingHistory.split('\n').map(s => s.trim().toUpperCase()).filter(Boolean);
+            const lines = existingHistory.split('\n').map(s => s.trim()).filter(Boolean);
             const existingSet = new Set(lines);
             
-            // 重要：检查原始内容中是否包含小写。如果有，即使没有新下载，也标记为 changed 以便重写为全大写并去重
-            const hasLowerCase = existingHistory.split('\n').some(l => l.trim() !== l.trim().toUpperCase() && l.trim() !== '');
-            let changed = hasLowerCase;
+            let changed = false;
             
             // 1. 如果任务彻底完成 (code 0)，且输入是单视频 URL，确保将其记入历史
             if (forceAddUrlBv) {
-                const rawBvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/i);
+                const rawBvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/);
                 if (rawBvidMatch) {
-                    const bvidUpper = rawBvidMatch[0].toUpperCase();
-                    if (!existingSet.has(bvidUpper)) {
-                        existingSet.add(bvidUpper);
+                    const bvid = rawBvidMatch[0];
+                    if (!existingSet.has(bvid)) {
+                        existingSet.add(bvid);
                         changed = true;
                     }
                 }
@@ -294,11 +290,11 @@ async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlB
             // 虽然进程 code 不是 0，但前 5 个已经下完的 mp4 文件名里带有 BV 号，会被扫入历史。
             for (const file of files) {
                 if (file.match(/\.(mp4|flv|mkv|mp3|m4a)$/i)) {
-                    const bvidMatch = file.match(/BV[a-zA-Z0-9]{10}/i);
+                    const bvidMatch = file.match(/BV[a-zA-Z0-9]{10}/);
                     if (bvidMatch) {
-                        const bvidUpper = bvidMatch[0].toUpperCase();
-                        if (!existingSet.has(bvidUpper)) {
-                            existingSet.add(bvidUpper);
+                        const bvid = bvidMatch[0];
+                        if (!existingSet.has(bvid)) {
+                            existingSet.add(bvid);
                             changed = true;
                         }
                     }

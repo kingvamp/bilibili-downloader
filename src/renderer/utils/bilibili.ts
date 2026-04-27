@@ -37,7 +37,7 @@ export function avToBv(aidInput: number | string): string {
  * BV ID to AV ID (Universal BVID 2.0)
  */
 export function bvToAv(bvid: string): string {
-    if (!bvid.toLowerCase().startsWith('bv1') || bvid.length < 12) return bvid;
+    if (!bvid.startsWith('BV1') || bvid.length < 12) return bvid;
 
     const bytes = bvid.split('');
     swap(bytes, 3, 9);
