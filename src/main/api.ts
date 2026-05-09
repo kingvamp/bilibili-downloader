@@ -189,6 +189,19 @@ export function setupApi() {
       return { success: false, message: error.message };
     }
   });
+
+  // 获取下载历史总数
+  ipcMain.handle('get-history-count', async () => {
+    try {
+      if (fs.existsSync(AppPaths.historyPath)) {
+        const content = fs.readFileSync(AppPaths.historyPath, 'utf8');
+        return content.split('\n').map(s => s.trim()).filter(Boolean).length;
+      }
+      return 0;
+    } catch (e) {
+      return 0;
+    }
+  });
 }
 
 function loadCookie(): void {

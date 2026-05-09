@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('api', {
   
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   scanFolderForHistory: () => ipcRenderer.invoke('scan-folder-for-history'),
+  getHistoryCount: () => ipcRenderer.invoke('get-history-count'),
   setClipboardMonitor: (state: boolean) => ipcRenderer.send('set-clipboard-monitor', state),
   setCloseToTray: (state: boolean) => ipcRenderer.send('set-close-to-tray', state),
   setNotifyState: (state: boolean) => ipcRenderer.send('set-notify-state', state),

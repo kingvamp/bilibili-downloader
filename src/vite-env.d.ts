@@ -17,6 +17,7 @@ interface IElectronAPI {
   
   selectFolder: () => Promise<string | null>;
   scanFolderForHistory: () => Promise<{ success: boolean, message?: string, foundCount?: number, addedCount?: number, totalInHistory?: number }>;
+  getHistoryCount: () => Promise<number>;
   setClipboardMonitor: (state: boolean) => void;
   setCloseToTray: (state: boolean) => void;
   setNotifyState: (state: boolean) => void;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Settings } from '../../types';
 
 interface SettingsModalProps {
@@ -14,6 +14,15 @@ export function SettingsModal({
 }: SettingsModalProps) {
   const [tempSettings, setTempSettings] = useState<Settings>(initialSettings);
   const [isScanning, setIsScanning] = useState(false);
+  const [historyCount, setHistoryCount] = useState<number>(0);
+
+  useEffect(() => {
+    const fetchCount = async () => {
+      const count = await window.api.getHistoryCount();
+      setHistoryCount(count);
+    };
+    fetchCount();
+  }, []);
 
   return (
     <div className="modal-overlay active">
@@ -130,6 +139,10 @@ export function SettingsModal({
           <div className="maintenance-card">
             <div className="maintenance-tip">
               如果你手动移动了已下载的视频文件，可以通过此功能递归扫描目录，将发现的视频 BV 号重新同步到本地下载历史记录中，防止重复下载。
+              <div style={{ marginTop: '8px', color: '#ff9800', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/></svg>
+                当前本地已记录: {historyCount} 条
+              </div>
             </div>
             <button 
               className={`download-btn secondary-btn ${isScanning ? 'loading-btn' : ''}`}
@@ -140,6 +153,7 @@ export function SettingsModal({
                 try {
                   const res = await window.api.scanFolderForHistory();
                   if (res.success) {
+                    setHistoryCount(res.totalInHistory ?? 0);
                     alert(`📋 扫描完成！\n\n共发现 BV 号: ${res.foundCount} 个\n新添加到记录: ${res.addedCount} 个\n当前总记录数: ${res.totalInHistory} 个`);
                   } else if (res.message !== '已取消') {
                     alert(`❌ 扫描失败: ${res.message}`);
