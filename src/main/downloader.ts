@@ -200,12 +200,12 @@ export function setupDownloader() {
     }
 
     if (isBatch) {
-        args.push('--file-pattern', '<pageTitle> [<bvid>]');
-        args.push('--multi-file-pattern', '<pageTitle> [<bvid>]');
+        args.push('--file-pattern', '[<ownerName>] [<videoDate:yyyyMMdd>] <pageTitle> [<bvid>]');
+        args.push('--multi-file-pattern', '[<ownerName>] [<videoDate:yyyyMMdd>] <pageTitle> [<bvid>]');
         args.push('-p', 'ALL'); 
     } else {
-        args.push('--file-pattern', '<videoTitle> [<bvid>]');
-        args.push('--multi-file-pattern', '<videoTitle> - P<pageNumberWithZero> <pageTitle> [<bvid>]');
+        args.push('--file-pattern', '[<ownerName>] [<videoDate:yyyyMMdd>] <videoTitle> [<bvid>]');
+        args.push('--multi-file-pattern', '[<ownerName>] [<videoDate:yyyyMMdd>] <videoTitle> - P<pageNumberWithZero> <pageTitle> [<bvid>]');
     }
 
     if (state.sessionCookie) {
