@@ -23,6 +23,11 @@ interface IElectronAPI {
   setNotifyState: (state: boolean) => void;
   setSoundState: (state: boolean) => void;
   notifyQueueDone: () => void;
+
+  // 定时下载
+  getScheduledTime: () => Promise<string>;
+  setScheduledTime: (time: string) => void;
+  onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => void;
   
   onClipboardMatch: (callback: (url: string) => void) => void;
   onSilentClipboardMatch: (callback: (url: string) => void) => void; 

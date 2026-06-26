@@ -35,6 +35,14 @@ contextBridge.exposeInMainWorld('api', {
   
   // 【新增】通知后端整个队列已全部完成
   notifyQueueDone: () => ipcRenderer.send('queue-finished'),
+
+  // 【新增】定时下载配置
+  getScheduledTime: () => ipcRenderer.invoke('get-scheduled-time'),
+  setScheduledTime: (time: string) => ipcRenderer.send('set-scheduled-time', time),
+  onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => {
+    ipcRenderer.removeAllListeners('scheduled-fav-download');
+    ipcRenderer.on('scheduled-fav-download', (_event: IpcRendererEvent, favId: string | null, message: string | null) => callback(favId, message));
+  },
   
   onClipboardMatch: (callback: (url: string) => void) => {
     ipcRenderer.removeAllListeners('clipboard-match');

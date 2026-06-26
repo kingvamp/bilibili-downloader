@@ -155,6 +155,37 @@ export function useDownload(settings: Settings) {
     }
   };
 
+  /** 定时触发：直接用收藏夹 ID 执行检测与下载，不依赖输入框，不弹 alert */
+  const triggerDefaultFavDownload = useCallback(async (favId: string) => {
+    setIsDetecting(true);
+    appendLog(`\n>>> ⏰ 定时任务触发，正在扫描默认收藏夹 (ID: ${favId}) ...\n`);
+
+    try {
+      const results = await window.api.checkDownloadHistory(favId);
+      const missing = results.filter(r => !r.isDownloaded);
+
+      if (results.length === 0) {
+        appendLog(`>>> ⚠️ 收藏夹为空或解析失败，本次定时任务跳过。\n`);
+        return;
+      }
+
+      appendLog(`>>> ✅ 扫描完成，发现 ${missing.length} 个未下载视频，正在加入下载队列...\n`);
+
+      if (missing.length === 0) {
+        appendLog(`>>> 🎉 默认收藏夹中所有视频均已下载，无需重复下载。\n`);
+        return;
+      }
+
+      // 直接将未下载的 BV 号加入队列，不弹重复确认弹窗
+      const tasks = missing.map(r => ({ url: r.bvid, isSilent: false }));
+      addToQueue(tasks);
+    } catch (e: any) {
+      appendLog(`>>> ❌ 定时任务执行失败: ${e.message}\n`);
+    } finally {
+      setIsDetecting(false);
+    }
+  }, [addToQueue, appendLog]);
+
   const handleCollectAll = async () => {
     const missing = missingVideosResult.filter(r => !r.isDownloaded);
     if (missing.length === 0) return;
@@ -282,6 +313,20 @@ export function useDownload(settings: Settings) {
       await checkAndAddTasks([url], true);
     });
   }, [appendLog, checkAndAddTasks]);
+
+  // 注册定时任务触发事件
+  useEffect(() => {
+    window.api.onScheduledFavDownload((favId, message) => {
+      if (message) {
+        // 主进程传来的提示（如未登录）
+        appendLog(`\n>>> ${message}\n`);
+        return;
+      }
+      if (favId) {
+        triggerDefaultFavDownload(favId);
+      }
+    });
+  }, [appendLog, triggerDefaultFavDownload]);
 
   useEffect(() => {
     if (!isDownloading && !isPaused && (activeTask || downloadQueue.length > 0)) {

@@ -16,3 +16,4 @@ Thumbs.db
 # 日志文件
 *.log
 npm-debug.log*
+CONTEXT.md

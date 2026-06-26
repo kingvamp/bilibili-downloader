@@ -175,6 +175,40 @@ export function SettingsModal({
           </div>
         </div>
 
+        <div className="setting-item" style={{ marginTop: '12px' }}>
+          <span className="setting-title">定时自动下载默认收藏夹</span>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <select
+              value={tempSettings.scheduledTime}
+              onChange={(e) => setTempSettings(prev => ({ ...prev, scheduledTime: e.target.value }))}
+              style={{
+                flex: 1,
+                padding: '8px',
+                background: '#222',
+                border: '1px solid #444',
+                color: tempSettings.scheduledTime !== '' ? '#fff' : '#666',
+                borderRadius: '4px',
+                fontSize: '14px',
+                outline: 'none',
+                cursor: 'pointer',
+              }}
+            >
+              <option value="">-- 不启用定时下载 --</option>
+              {Array.from({ length: 24 }, (_, i) => (
+                <option key={i} value={String(i)}>
+                  {String(i).padStart(2, '0')}:00
+                </option>
+              ))}
+            </select>
+          </div>
+          <div style={{ marginTop: '6px', fontSize: '12px', color: '#888' }}>
+            {tempSettings.scheduledTime !== ''
+              ? `每天 ${String(Number(tempSettings.scheduledTime)).padStart(2, '0')}:00 自动扫描并下载未下载的收藏夹视频`
+              : '不启用 — 选择整点时间后生效'}
+          </div>
+        </div>
+
+
         <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'center' }}>
           <button className="modal-btn btn-save" onClick={() => onSave(tempSettings)} style={{ width: '100%', padding: '12px 0' }}>
             保存并应用配置
