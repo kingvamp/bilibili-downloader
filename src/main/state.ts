@@ -13,8 +13,8 @@ export interface AppState {
   isNotifyEnabled: boolean;
   isSoundEnabled: boolean;
   currentChild: ChildProcess | null;
-  /** 定时下载时间点，格式 "HH:mm"，空字符串表示禁用 */
-  scheduledTime: string;
+  /** 是否开启每日自动下载默认收藏夹 */
+  autoDownloadFav: boolean;
 }
 
 export const state: AppState = {
@@ -28,7 +28,7 @@ export const state: AppState = {
   isNotifyEnabled: true,
   isSoundEnabled: false,
   currentChild: null,
-  scheduledTime: '',
+  autoDownloadFav: false,
 };
 
 export const AppPaths = {

@@ -24,9 +24,9 @@ interface IElectronAPI {
   setSoundState: (state: boolean) => void;
   notifyQueueDone: () => void;
 
-  // 定时下载
-  getScheduledTime: () => Promise<string>;
-  setScheduledTime: (time: string) => void;
+  // 每日自动下载
+  getLastTriggeredTime: () => Promise<number>;
+  setAutoDownloadFav: (enabled: boolean) => void;
   onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => void;
   
   onClipboardMatch: (callback: (url: string) => void) => void;

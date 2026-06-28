@@ -36,9 +36,9 @@ contextBridge.exposeInMainWorld('api', {
   // 【新增】通知后端整个队列已全部完成
   notifyQueueDone: () => ipcRenderer.send('queue-finished'),
 
-  // 【新增】定时下载配置
-  getScheduledTime: () => ipcRenderer.invoke('get-scheduled-time'),
-  setScheduledTime: (time: string) => ipcRenderer.send('set-scheduled-time', time),
+  // 【新增】每日自动下载配置
+  getLastTriggeredTime: () => ipcRenderer.invoke('get-last-triggered-time'),
+  setAutoDownloadFav: (enabled: boolean) => ipcRenderer.send('set-auto-download-fav', enabled),
   onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => {
     ipcRenderer.removeAllListeners('scheduled-fav-download');
     ipcRenderer.on('scheduled-fav-download', (_event: IpcRendererEvent, favId: string | null, message: string | null) => callback(favId, message));

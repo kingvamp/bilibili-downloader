@@ -15,13 +15,16 @@ export function SettingsModal({
   const [tempSettings, setTempSettings] = useState<Settings>(initialSettings);
   const [isScanning, setIsScanning] = useState(false);
   const [historyCount, setHistoryCount] = useState<number>(0);
+  const [lastTriggeredTime, setLastTriggeredTime] = useState<number>(0);
 
   useEffect(() => {
-    const fetchCount = async () => {
+    const fetchData = async () => {
       const count = await window.api.getHistoryCount();
       setHistoryCount(count);
+      const time = await window.api.getLastTriggeredTime();
+      setLastTriggeredTime(time);
     };
-    fetchCount();
+    fetchData();
   }, []);
 
   return (
@@ -176,35 +179,28 @@ export function SettingsModal({
         </div>
 
         <div className="setting-item" style={{ marginTop: '12px' }}>
-          <span className="setting-title">定时自动下载默认收藏夹</span>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <select
-              value={tempSettings.scheduledTime}
-              onChange={(e) => setTempSettings(prev => ({ ...prev, scheduledTime: e.target.value }))}
-              style={{
-                flex: 1,
-                padding: '8px',
-                background: '#222',
-                border: '1px solid #444',
-                color: tempSettings.scheduledTime !== '' ? '#fff' : '#666',
-                borderRadius: '4px',
-                fontSize: '14px',
-                outline: 'none',
-                cursor: 'pointer',
-              }}
-            >
-              <option value="">-- 不启用定时下载 --</option>
-              {Array.from({ length: 24 }, (_, i) => (
-                <option key={i} value={String(i)}>
-                  {String(i).padStart(2, '0')}:00
-                </option>
-              ))}
-            </select>
-          </div>
-          <div style={{ marginTop: '6px', fontSize: '12px', color: '#888' }}>
-            {tempSettings.scheduledTime !== ''
-              ? `每天 ${String(Number(tempSettings.scheduledTime)).padStart(2, '0')}:00 自动扫描并下载未下载的收藏夹视频`
-              : '不启用 — 选择整点时间后生效'}
+          <label className="option-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={tempSettings.autoDownloadFav}
+              onChange={(e) => setTempSettings(prev => ({ ...prev, autoDownloadFav: e.target.checked }))}
+            />
+            开启每日自动下载默认收藏夹 (每24小时执行一次)
+          </label>
+          <div style={{ marginTop: '6px', fontSize: '12px', color: '#888', paddingLeft: '22px' }}>
+            {tempSettings.autoDownloadFav ? (
+              <>
+                🟢 每日自动下载已启用。
+                <br />
+                {lastTriggeredTime > 0 ? (
+                  `上次下载时间: ${new Date(lastTriggeredTime).toLocaleString()}`
+                ) : (
+                  '上次下载时间: 暂无记录 (开启后 10s 内或下个周期将触发首次下载)'
+                )}
+              </>
+            ) : (
+              '⚪ 每日自动下载未启用'
+            )}
           </div>
         </div>
 

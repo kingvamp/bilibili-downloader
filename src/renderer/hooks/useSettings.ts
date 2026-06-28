@@ -10,7 +10,7 @@ export function useSettings(appendLog: (msg: string) => void) {
     closeToTray: localStorage.getItem('closeToTray') !== 'false',
     notifyState: localStorage.getItem('notifyState') !== 'false',
     soundState: localStorage.getItem('soundState') === 'true',
-    scheduledTime: localStorage.getItem('scheduledTime') || '',
+    autoDownloadFav: localStorage.getItem('autoDownloadFav') === 'true',
   });
 
   const saveSettings = (newSettings: Settings) => {
@@ -22,8 +22,8 @@ export function useSettings(appendLog: (msg: string) => void) {
     if (settings.closeToTray !== newSettings.closeToTray) window.api.setCloseToTray(newSettings.closeToTray);
     if (settings.notifyState !== newSettings.notifyState) window.api.setNotifyState(newSettings.notifyState);
     if (settings.soundState !== newSettings.soundState) window.api.setSoundState(newSettings.soundState);
-    // 定时时间变更时同步到主进程持久化
-    if (settings.scheduledTime !== newSettings.scheduledTime) window.api.setScheduledTime(newSettings.scheduledTime);
+    // 每日自动下载状态变更时同步到主进程
+    if (settings.autoDownloadFav !== newSettings.autoDownloadFav) window.api.setAutoDownloadFav(newSettings.autoDownloadFav);
 
     // Save to localStorage
     Object.entries(newSettings).forEach(([key, value]) => {

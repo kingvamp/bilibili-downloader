@@ -158,14 +158,14 @@ export function useDownload(settings: Settings) {
   /** 定时触发：直接用收藏夹 ID 执行检测与下载，不依赖输入框，不弹 alert */
   const triggerDefaultFavDownload = useCallback(async (favId: string) => {
     setIsDetecting(true);
-    appendLog(`\n>>> ⏰ 定时任务触发，正在扫描默认收藏夹 (ID: ${favId}) ...\n`);
+    appendLog(`\n>>> ⏰ 每日自动下载触发，正在扫描默认收藏夹 (ID: ${favId}) ...\n`);
 
     try {
       const results = await window.api.checkDownloadHistory(favId);
       const missing = results.filter(r => !r.isDownloaded);
 
       if (results.length === 0) {
-        appendLog(`>>> ⚠️ 收藏夹为空或解析失败，本次定时任务跳过。\n`);
+        appendLog(`>>> ⚠️ 收藏夹为空或解析失败，本次自动下载跳过。\n`);
         return;
       }
 
@@ -180,7 +180,7 @@ export function useDownload(settings: Settings) {
       const tasks = missing.map(r => ({ url: r.bvid, isSilent: false }));
       addToQueue(tasks);
     } catch (e: any) {
-      appendLog(`>>> ❌ 定时任务执行失败: ${e.message}\n`);
+      appendLog(`>>> ❌ 自动下载执行失败: ${e.message}\n`);
     } finally {
       setIsDetecting(false);
     }
