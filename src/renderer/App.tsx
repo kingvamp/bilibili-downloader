@@ -36,6 +36,7 @@ function App() {
     redownloadConfirm,
     handleRedownloadResponse,
     handleDownload,
+    handleDownloadDefaultFav,
     handlePause,
     handleResume,
     handleStop,
@@ -85,6 +86,7 @@ function App() {
           hasTasks={totalTasks > 0}
           onDownload={handleDownload}
           onCheckAndAddTasks={checkAndAddTasks}
+          onDownloadDefaultFav={handleDownloadDefaultFav}
           onDetectFavlist={handleDetectFavlist}
           isDetecting={isDetecting}
           appendLog={appendLog}

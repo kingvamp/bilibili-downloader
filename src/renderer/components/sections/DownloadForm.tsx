@@ -10,6 +10,7 @@ interface DownloadFormProps {
     hasTasks: boolean;
     onDownload: () => void;
     onCheckAndAddTasks: (urls: string[], isSilent: boolean) => void;
+    onDownloadDefaultFav: () => void;
     onDetectFavlist: () => void;
     isDetecting: boolean;
     appendLog: (msg: string) => void;
@@ -25,6 +26,7 @@ export function DownloadForm({
     hasTasks,
     onDownload,
     onCheckAndAddTasks,
+    onDownloadDefaultFav,
     onDetectFavlist,
     isDetecting,
     appendLog
@@ -46,9 +48,7 @@ export function DownloadForm({
                     className="shortcut-btn"
                     onClick={async () => {
                         if (!userInfo.mid) return alert('请先扫码登录后再使用此功能');
-                        const url = `https://space.bilibili.com/${userInfo.mid}/favlist`;
-                        appendLog(`\n>>> 📂 已触发个人收藏夹全量解析...\n`);
-                        onCheckAndAddTasks([url], false);
+                        onDownloadDefaultFav();
                     }}
                 >
                     <svg viewBox="0 0 24 24"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" /></svg>

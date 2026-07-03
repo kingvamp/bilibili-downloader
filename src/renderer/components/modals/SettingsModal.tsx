@@ -204,6 +204,26 @@ export function SettingsModal({
           </div>
         </div>
 
+        <div className="setting-item" style={{ marginTop: '12px' }}>
+          <label className="option-label" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={tempSettings.unfavAfterDownload}
+              onChange={(e) => setTempSettings(prev => ({ ...prev, unfavAfterDownload: e.target.checked }))}
+            />
+            下载完成后自动从收藏夹移除视频
+          </label>
+          <div style={{ marginTop: '6px', fontSize: '12px', color: '#888', paddingLeft: '22px' }}>
+            {tempSettings.unfavAfterDownload ? (
+              <span style={{ color: '#ff9800' }}>
+                ⚠️ 已启用。仅在"下载默认收藏夹"流程中生效，取消收藏<strong>不可逆</strong>。
+              </span>
+            ) : (
+              '⚪ 未启用，下载后收藏夹保持不变'
+            )}
+          </div>
+        </div>
+
 
         <div style={{ marginTop: '25px', display: 'flex', justifyContent: 'center' }}>
           <button className="modal-btn btn-save" onClick={() => onSave(tempSettings)} style={{ width: '100%', padding: '12px 0' }}>

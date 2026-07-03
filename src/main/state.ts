@@ -15,6 +15,8 @@ export interface AppState {
   currentChild: ChildProcess | null;
   /** 是否开启每日自动下载默认收藏夹 */
   autoDownloadFav: boolean;
+  /** 下载完成后自动从收藏夹移除视频（仅限默认收藏夹下载流程） */
+  unfavAfterDownload: boolean;
 }
 
 export const state: AppState = {
@@ -29,6 +31,7 @@ export const state: AppState = {
   isSoundEnabled: false,
   currentChild: null,
   autoDownloadFav: false,
+  unfavAfterDownload: false,
 };
 
 export const AppPaths = {

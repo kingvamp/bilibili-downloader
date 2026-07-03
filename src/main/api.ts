@@ -202,6 +202,11 @@ export function setupApi() {
       return 0;
     }
   });
+
+  // 设置"下载后自动取消收藏"开关
+  ipcMain.on('set-unfav-after-download', (_, enabled: boolean) => {
+    state.unfavAfterDownload = enabled;
+  });
 }
 
 function loadCookie(): void {

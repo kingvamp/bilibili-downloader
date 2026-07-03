@@ -216,8 +216,8 @@ export function useDownload(settings: Settings) {
         return;
       }
 
-      // 直接将未下载的 BV 号加入队列，不弹重复确认弹窗
-      const tasks = missing.map(r => ({ url: r.bvid, isSilent: false }));
+      // 直接将未下载的 BV 号加入队列，携带 aid 和 mediaId 以便下载完成后取消收藏
+      const tasks = missing.map(r => ({ url: r.bvid, isSilent: false, aid: r.aid, mediaId: Number(favId) }));
       addToQueue(tasks);
     } catch (e: any) {
       appendLog(`>>> ❌ 自动下载执行失败: ${e.message}\n`);
@@ -225,6 +225,17 @@ export function useDownload(settings: Settings) {
       setIsDetecting(false);
     }
   }, [addToQueue, appendLog]);
+
+  /** 手动触发：先取默认收藏夹 ID，再复用 triggerDefaultFavDownload（与定时任务统一入口） */
+  const handleDownloadDefaultFav = useCallback(async () => {
+    appendLog('\n>>> 📂 正在获取默认收藏夹 ID...\n');
+    const favId = await window.api.getDefaultFavId();
+    if (!favId) {
+      appendLog('>>> ⚠️ 无法获取默认收藏夹 ID，请确认已登录。\n');
+      return;
+    }
+    await triggerDefaultFavDownload(String(favId));
+  }, [appendLog, triggerDefaultFavDownload]);
 
   const handleCollectAll = async () => {
     const missing = missingVideosResult.filter(r => !r.isDownloaded);
@@ -395,7 +406,9 @@ export function useDownload(settings: Settings) {
         settings.dlSub,
         settings.downloadDir,
         taskToStart.isSilent,
-        settings.multiThread
+        settings.multiThread,
+        taskToStart.aid,
+        taskToStart.mediaId
       );
     } else if (!isDownloading && !isPaused && totalTasks > 0 && completedTasks >= totalTasks && activeTask === null) {
       if (logs !== '等待任务...' && (logs.includes('🚀 开始处理') || logs.includes('🚀 开始下载'))) {
@@ -425,6 +438,7 @@ export function useDownload(settings: Settings) {
     handleStop,
     clearLogs,
     checkAndAddTasks,
+    handleDownloadDefaultFav,
     handleDetectFavlist,
     handleCollectAll,
     isDetecting,

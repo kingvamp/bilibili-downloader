@@ -177,7 +177,7 @@ export function setupDownloader() {
     }
   });
 
-  ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSilent, isMultiThread) => {
+  ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSilent, isMultiThread, aid?: number, mediaId?: number) => {
     if (!rawUrl) return;
 
     const binDir = app.isPackaged 
@@ -243,6 +243,31 @@ export function setupDownloader() {
         // 任何退出状态（包括手动停止）都执行一次目录扫描，同步已完成的文件 BV
         // 只有在 code === 0 时，才允许将 URL 对应的 BV 绝对写入历史
         await syncDownloadHistory(workDir, rawUrl, code === 0);
+
+        // 下载成功 + 开关开启 + 携带 aid/mediaId → 自动取消收藏
+        if (code === 0 && aid && mediaId && state.unfavAfterDownload && state.sessionCookie) {
+            const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
+            if (csrf) {
+                try {
+                    const headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                        'Cookie': state.sessionCookie,
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    };
+                    await axios.post(
+                        'https://api.bilibili.com/x/v3/fav/resource/deal',
+                        `rid=${aid}&type=2&add_media_ids=&del_media_ids=${mediaId}&platform=web&jsonp=jsonp&csrf=${csrf}`,
+                        { headers }
+                    );
+                    event.sender.send('download-progress', `>>> 🗑️ 已从收藏夹移除: ${rawUrl}\n`);
+                } catch (e: any) {
+                    // 取消收藏失败不影响下载流程，只打日志
+                    event.sender.send('download-progress', `>>> ⚠️ 取消收藏失败 (${rawUrl}): ${e.message}\n`);
+                }
+            } else {
+                event.sender.send('download-progress', `>>> ⚠️ 取消收藏跳过 (${rawUrl}): 未找到 CSRF token\n`);
+            }
+        }
 
         if (code === 0 && isSilent) {
             clipboard.writeText(`Enhancer_Download_Finished||${rawUrl}`);

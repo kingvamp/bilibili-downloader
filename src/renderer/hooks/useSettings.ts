@@ -11,6 +11,7 @@ export function useSettings(appendLog: (msg: string) => void) {
     notifyState: localStorage.getItem('notifyState') !== 'false',
     soundState: localStorage.getItem('soundState') === 'true',
     autoDownloadFav: localStorage.getItem('autoDownloadFav') === 'true',
+    unfavAfterDownload: localStorage.getItem('unfavAfterDownload') === 'true',
   });
 
   const saveSettings = (newSettings: Settings) => {
@@ -24,6 +25,8 @@ export function useSettings(appendLog: (msg: string) => void) {
     if (settings.soundState !== newSettings.soundState) window.api.setSoundState(newSettings.soundState);
     // 每日自动下载状态变更时同步到主进程
     if (settings.autoDownloadFav !== newSettings.autoDownloadFav) window.api.setAutoDownloadFav(newSettings.autoDownloadFav);
+    // 下载后自动取消收藏开关变更时同步到主进程
+    if (settings.unfavAfterDownload !== newSettings.unfavAfterDownload) window.api.setUnfavAfterDownload(newSettings.unfavAfterDownload);
 
     // Save to localStorage
     Object.entries(newSettings).forEach(([key, value]) => {
