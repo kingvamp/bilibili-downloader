@@ -10,6 +10,7 @@ import { DownloadForm } from './components/sections/DownloadForm';
 
 import { LoginModal } from './components/modals/LoginModal';
 import { SettingsModal } from './components/modals/SettingsModal';
+import { ConfirmModal } from './components/modals/ConfirmModal';
 import { MissingVideosModal } from './components/modals/MissingVideosModal';
 
 function App() {
@@ -32,6 +33,8 @@ function App() {
     completedTasks,
     subProgress,
     isCheckingDuplicates,
+    redownloadConfirm,
+    handleRedownloadResponse,
     handleDownload,
     handlePause,
     handleResume,
@@ -152,6 +155,16 @@ function App() {
             setIsSettingsModalOpen(false);
           }}
           onClose={() => setIsSettingsModalOpen(false)}
+        />
+      )}
+
+      {/* 单视频重复下载确认弹窗 */}
+      {redownloadConfirm && (
+        <ConfirmModal
+          videoTitle={redownloadConfirm.videoTitle}
+          bvid={redownloadConfirm.bvid}
+          onConfirm={() => handleRedownloadResponse(true)}
+          onCancel={() => handleRedownloadResponse(false)}
         />
       )}
 

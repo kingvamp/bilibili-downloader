@@ -19,6 +19,13 @@ export function useDownload(settings: Settings) {
   const [isMissingVideosModalOpen, setIsMissingVideosModalOpen] = useState(false);
   const [missingVideosResult, setMissingVideosResult] = useState<DuplicateResult[]>([]);
 
+  // 单视频重复确认弹窗：通过 Promise 暂停 checkAndAddTasks 等待用户选择
+  const [redownloadConfirm, setRedownloadConfirm] = useState<{
+    videoTitle: string;
+    bvid: string;
+  } | null>(null);
+  const redownloadResolverRef = useRef<((value: boolean) => void) | null>(null);
+
   const logRef = useRef<HTMLDivElement>(null);
   const currentTaskRef = useRef<DownloadTask | null>(null);
   const isPausedRef = useRef(false);
@@ -62,6 +69,23 @@ export function useDownload(settings: Settings) {
     appendLog(`\n>>> 📥 任务已入列（共 ${tasks.length} 个）...\n`);
   }, [appendLog]);
 
+  /** 弹出自定义确认弹窗，返回用户选择（true=重新下载，false=跳过） */
+  const showRedownloadConfirm = useCallback(
+    (videoTitle: string, bvid: string): Promise<boolean> =>
+      new Promise((resolve) => {
+        redownloadResolverRef.current = resolve;
+        setRedownloadConfirm({ videoTitle, bvid });
+      }),
+    []
+  );
+
+  /** 由 App.tsx 中的 ConfirmModal 按钮回调，解析 Promise 并关闭弹窗 */
+  const handleRedownloadResponse = useCallback((result: boolean) => {
+    setRedownloadConfirm(null);
+    redownloadResolverRef.current?.(result);
+    redownloadResolverRef.current = null;
+  }, []);
+
   const checkAndAddTasks = useCallback(async (urls: string[], isSilent: boolean) => {
     if (urls.length === 0) return;
     const tasks = urls.map(url => ({ url, isSilent }));
@@ -88,8 +112,19 @@ export function useDownload(settings: Settings) {
         // 无法解析视频列表，回退到原始 URL 直接下载
         addToQueue(tasks);
       } else if (nonDuplicates.length === 0) {
-        // 全部已在历史记录中，无需重新下载
-        appendLog(`\n>>> 🎉 所有 ${allResults.length} 个视频均已下载，无需重复下载。\n`);
+        if (allResults.length === 1) {
+          // 单个视频已下载：用自定义弹窗询问用户
+          const item = allResults[0];
+          const redownload = await showRedownloadConfirm(item.title || item.bvid, item.bvid);
+          if (redownload) {
+            addToQueue(tasks);
+          } else {
+            appendLog(`\n>>> ⏭️ 已跳过：${item.bvid}\n`);
+          }
+        } else {
+          // 批量（收藏夹）全部已下载：静默提示，不打扰
+          appendLog(`\n>>> 🎉 所有 ${allResults.length} 个视频均已下载，无需重复下载。\n`);
+        }
       } else {
         // 有新视频：自动跳过已下载的，只加入新视频
         if (duplicates.length > 0) {
@@ -104,7 +139,7 @@ export function useDownload(settings: Settings) {
     } finally {
       setIsCheckingDuplicates(false);
     }
-  }, [addToQueue, appendLog]);
+  }, [addToQueue, appendLog, showRedownloadConfirm]);
 
   const handleDownload = async () => {
     const rawText = urlInput.trim();
@@ -382,6 +417,8 @@ export function useDownload(settings: Settings) {
     completedTasks,
     subProgress,
     isCheckingDuplicates,
+    redownloadConfirm,
+    handleRedownloadResponse,
     handleDownload,
     handlePause,
     handleResume,
