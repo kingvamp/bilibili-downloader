@@ -10,7 +10,18 @@ interface HeaderProps {
 export function Header({ userInfo, onLogin, onOpenSettings, onLogout }: HeaderProps) {
   return (
     <header>
-      <div className="app-title">📺 Bilibili Downloader</div>
+      <div className="app-title">
+        📺 Bilibili Downloader
+        <span style={{
+          marginLeft: '8px',
+          fontSize: '11px',
+          fontWeight: 'normal',
+          color: '#555',
+          letterSpacing: '0.5px',
+        }}>
+          v{__APP_VERSION__}
+        </span>
+      </div>
       <div className="header-right">
         <div className="user-area">
           {!userInfo.isLogin ? (
