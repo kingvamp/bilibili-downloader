@@ -30,7 +30,6 @@
   "dependencies": {
     "axios": "^1.6.5",
     "clipboard-event": "^1.6.0",
-    "electron-updater": "^6.8.3",
     "qrcode": "^1.5.3",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
@@ -42,13 +41,6 @@
     "directories": {
       "output": "release"
     },
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "kingvamp",
-        "repo": "bilibili-downloader"
-      }
-    ],
     "files": [
       "dist/**/*",
       "dist-electron/**/*",

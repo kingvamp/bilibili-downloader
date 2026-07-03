@@ -3,7 +3,6 @@ import { setupWindow } from './window';
 import { setupApi } from './api';
 import { setupClipboard, stopClipboard } from './clipboard';
 import { setupDownloader } from './downloader';
-import { setupUpdater } from './updater';
 import { setupServer } from './server';
 import { setupScheduler } from './scheduler';
 
@@ -15,7 +14,6 @@ app.whenReady().then(() => {
   setupWindow();
   setupClipboard();
   setupDownloader();
-  setupUpdater();
   setupServer();
   setupScheduler();
 });
