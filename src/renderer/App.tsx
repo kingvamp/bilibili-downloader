@@ -10,7 +10,6 @@ import { DownloadForm } from './components/sections/DownloadForm';
 
 import { LoginModal } from './components/modals/LoginModal';
 import { SettingsModal } from './components/modals/SettingsModal';
-import { DuplicateModal } from './components/modals/DuplicateModal';
 import { MissingVideosModal } from './components/modals/MissingVideosModal';
 
 function App() {
@@ -33,11 +32,6 @@ function App() {
     completedTasks,
     subProgress,
     isCheckingDuplicates,
-    isDuplicateModalOpen,
-    setIsDuplicateModalOpen,
-    duplicateResults,
-    pendingTasks,
-    addToQueue,
     handleDownload,
     handlePause,
     handleResume,
@@ -158,17 +152,6 @@ function App() {
             setIsSettingsModalOpen(false);
           }}
           onClose={() => setIsSettingsModalOpen(false)}
-        />
-      )}
-
-      {isDuplicateModalOpen && (
-        <DuplicateModal
-          results={duplicateResults}
-          onConfirm={() => {
-            addToQueue(pendingTasks);
-            setIsDuplicateModalOpen(false);
-          }}
-          onClose={() => setIsDuplicateModalOpen(false)}
         />
       )}
 

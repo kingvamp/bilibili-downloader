@@ -14,9 +14,6 @@ export function useDownload(settings: Settings) {
   const [subProgress, setSubProgress] = useState<{ current: number; total: number } | null>(null);
   
   const [isCheckingDuplicates, setIsCheckingDuplicates] = useState(false);
-  const [isDuplicateModalOpen, setIsDuplicateModalOpen] = useState(false);
-  const [duplicateResults, setDuplicateResults] = useState<DuplicateResult[]>([]);
-  const [pendingTasks, setPendingTasks] = useState<DownloadTask[]>([]);
 
   const [isDetecting, setIsDetecting] = useState(false);
   const [isMissingVideosModalOpen, setIsMissingVideosModalOpen] = useState(false);
@@ -84,13 +81,21 @@ export function useDownload(settings: Settings) {
         allResults = [...allResults, ...results];
       }
 
+      const nonDuplicates = allResults.filter(r => !r.isDownloaded);
       const duplicates = allResults.filter(r => r.isDownloaded);
-      if (duplicates.length > 0) {
-        setDuplicateResults(allResults);
-        setPendingTasks(tasks);
-        setIsDuplicateModalOpen(true);
-      } else {
+
+      if (allResults.length === 0) {
+        // 无法解析视频列表，回退到原始 URL 直接下载
         addToQueue(tasks);
+      } else if (nonDuplicates.length === 0) {
+        // 全部已在历史记录中，无需重新下载
+        appendLog(`\n>>> 🎉 所有 ${allResults.length} 个视频均已下载，无需重复下载。\n`);
+      } else {
+        // 有新视频：自动跳过已下载的，只加入新视频
+        if (duplicates.length > 0) {
+          appendLog(`\n>>> ⏭️ 跳过 ${duplicates.length} 个已下载视频，正在下载 ${nonDuplicates.length} 个新视频...\n`);
+        }
+        addToQueue(nonDuplicates.map(r => ({ url: r.bvid, isSilent: false })));
       }
     } catch (e) {
       console.error(e);
@@ -377,11 +382,6 @@ export function useDownload(settings: Settings) {
     completedTasks,
     subProgress,
     isCheckingDuplicates,
-    isDuplicateModalOpen,
-    setIsDuplicateModalOpen,
-    duplicateResults,
-    pendingTasks,
-    addToQueue,
     handleDownload,
     handlePause,
     handleResume,
