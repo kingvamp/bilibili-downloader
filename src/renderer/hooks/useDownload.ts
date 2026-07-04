@@ -57,28 +57,17 @@ export function useDownload(settings: Settings) {
   }, [completedTasks]);
 
   const addToQueue = useCallback((tasks: DownloadTask[]) => {
-    // 去重：过滤掉已在队列或正在下载的相同 URL，避免重复连段保存
-    const uniqueTasks = tasks.filter(t =>
-      !downloadQueue.some(q => q.url === t.url) &&
-      (!activeTask || activeTask.url !== t.url)
-    );
-
-    if (uniqueTasks.length === 0) {
-      appendLog(`\n>>> 📥 所有任务已在队列中，未添加新任务。\n`);
-      return;
-    }
-
     setTotalTasks(prev => {
       if (prev === 0 || completedTasksRef.current >= prev) {
         setCompletedTasks(0);
-        return uniqueTasks.length;
+        return tasks.length;
       }
-      return prev + uniqueTasks.length;
+      return prev + tasks.length;
     });
 
-    setDownloadQueue(prev => [...prev, ...uniqueTasks]);
-    appendLog(`\n>>> 📥 任务已入列（共 ${uniqueTasks.length} 个）...\n`);
-  }, [appendLog, downloadQueue, activeTask]);
+    setDownloadQueue(prev => [...prev, ...tasks]);
+    appendLog(`\n>>> 📥 任务已入列（共 ${tasks.length} 个）...\n`);
+  }, [appendLog]);
 
   /** 弹出自定义确认弹窗，返回用户选择（true=重新下载，false=跳过） */
   const showRedownloadConfirm = useCallback(
