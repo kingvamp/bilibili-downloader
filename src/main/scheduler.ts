@@ -1,8 +1,8 @@
 // scheduler.ts
-// 定时任务模块：重构为每日自动下载，间隔 >= 24小时触发一次自动下载默认收藏夹
+// 定时任务模块：每小时轮询一次 + 系统唤醒后立即触发，自动下载默认收藏夹中的新视频
 // 关联：state.ts（读写 autoDownloadFav）、api.ts（get-default-fav-id 逻辑）、渲染进程（接收 scheduled-fav-download 事件）
 
-import { ipcMain } from 'electron';
+import { ipcMain, powerMonitor } from 'electron';
 import fs from 'fs';
 import axios from 'axios';
 import { state } from './state';
@@ -75,19 +75,12 @@ async function fetchDefaultFavId(): Promise<number | null> {
 // 内存中记录最后一次提示未登录的时间，防止日志刷屏
 let lastWarnedNoLoginTime = 0;
 
-/** 检查时间间隔并在满足 24 小时时触发下载 */
+/** 检查开关状态并触发自动下载 */
 async function checkAndTriggerAutoDownload(): Promise<void> {
   if (!state.autoDownloadFav) return;
 
   const config = loadConfig();
-  // 检查是否距离上次触发已满 24 小时
-  const INTERVAL_MS = 24 * 60 * 60 * 1000;
   const now = Date.now();
-  const timeDiff = now - config.lastTriggeredTime;
-
-  if (timeDiff < INTERVAL_MS) {
-    return; // 未满 24 小时，跳过
-  }
 
   if (!state.mainWindow) {
     console.warn('[scheduler] 窗口未就绪，跳过本次自动下载');
@@ -165,14 +158,20 @@ export function setupScheduler(): void {
     }
   });
 
+  // 监听系统从睡眠/休眠中恢复：唤醒后立即触发一次检查
+  powerMonitor.on('resume', () => {
+    console.log('[scheduler] 系统从睡眠中唤醒，立即触发自动下载检查...');
+    checkAndTriggerAutoDownload();
+  });
+
   // 启动后延迟 10 秒进行首次检查（确保渲染进程完成初始化与 Cookie 加载）
   setTimeout(() => {
     console.log('[scheduler] 执行启动后首次自动下载检查...');
     checkAndTriggerAutoDownload();
   }, 10 * 1000);
 
-  // 每 10 分钟轮询一次
+  // 每 1 小时轮询一次（覆盖电脑持续开机的场景）
   setInterval(() => {
     checkAndTriggerAutoDownload();
-  }, 10 * 60 * 1000);
+  }, 60 * 60 * 1000);
 }

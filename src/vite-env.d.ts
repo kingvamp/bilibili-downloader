@@ -2,7 +2,7 @@
 /// <reference types="vite-plugin-electron/renderer" />
 
 interface IElectronAPI {
-  startDownload: (url: string, isBatch?: boolean, dlSub?: boolean, downloadDir?: string, isSilent?: boolean, isMultiThread?: boolean) => void;
+  startDownload: (url: string, isBatch?: boolean, dlSub?: boolean, downloadDir?: string, isSilent?: boolean, isMultiThread?: boolean, aid?: number, mediaId?: number) => void;
   stopDownload: () => void;
   onProgress: (callback: (data: string) => void) => void;
   onComplete: (callback: (code: number) => void) => void;
@@ -27,6 +27,7 @@ interface IElectronAPI {
   // 每日自动下载
   getLastTriggeredTime: () => Promise<number>;
   setAutoDownloadFav: (enabled: boolean) => void;
+  setUnfavAfterDownload: (enabled: boolean) => void;
   onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => void;
   
   onClipboardMatch: (callback: (url: string) => void) => void;
