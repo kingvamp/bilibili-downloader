@@ -1,3 +1,4 @@
+// Preload 脚本：安全地向渲染进程暴露 Electron 的 IPC 接口（如下载控制、B站API、窗口操作等）。
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
@@ -23,6 +24,7 @@ contextBridge.exposeInMainWorld('api', {
   logout: () => ipcRenderer.invoke('logout'),
   getDefaultFavId: () => ipcRenderer.invoke('get-default-fav-id'),
   collectToFavFolder: (aid: number, folderId: number) => ipcRenderer.invoke('collect-to-fav-folder', aid, folderId),
+  removeFromFavFolder: (aid: number, folderId: number) => ipcRenderer.invoke('remove-from-fav-folder', aid, folderId),
 
   
   selectFolder: () => ipcRenderer.invoke('select-folder'),

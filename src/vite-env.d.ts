@@ -1,3 +1,4 @@
+// TypeScript 类型声明文件：定义 Electron API 接口类型以支持渲染进程的类型安全和自动补全。
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-electron/renderer" />
 
@@ -12,6 +13,7 @@ interface IElectronAPI {
   logout: () => Promise<{ success: boolean }>;
   getDefaultFavId: () => Promise<number | null>;
   collectToFavFolder: (aid: number, folderId: number) => Promise<{ success: boolean; message?: string }>;
+  removeFromFavFolder: (aid: number, folderId: number) => Promise<{ success: boolean; message?: string }>;
   checkDownloadHistory: (url: string) => Promise<{ bvid: string; aid?: number; title: string; isDownloaded: boolean }[]>;
   openExternal: (url: string) => void;
   

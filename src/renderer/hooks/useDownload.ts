@@ -1,3 +1,4 @@
+// 渲染进程下载 Hook：管理下载任务队列、状态、日志及自动下载/取消收藏相关逻辑，与 Electron API 交互。
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { DownloadTask, Settings, DuplicateResult } from '../types';
 import { avToBv } from '../utils/bilibili';
@@ -213,6 +214,31 @@ export function useDownload(settings: Settings) {
 
       if (missing.length === 0) {
         appendLog(`>>> 🎉 默认收藏夹中所有视频均已下载，无需重复下载。\n`);
+        if (settings.unfavAfterDownload) {
+          appendLog(`>>> 🗑️ 已开启“下载完成后自动从收藏夹移除视频”，正在自动清理默认收藏夹 (共 ${results.length} 个视频)...\n`);
+          let successCount = 0;
+          for (let i = 0; i < results.length; i++) {
+            const item = results[i];
+            if (!item.aid) {
+              appendLog(`>>> [${i + 1}/${results.length}] ⚠️ 跳过取消收藏 ${item.bvid}，原因：未能获取到 AID\n`);
+              continue;
+            }
+            try {
+              const res = await window.api.removeFromFavFolder(item.aid, Number(favId));
+              if (res.success) {
+                successCount++;
+                appendLog(`>>> [${i + 1}/${results.length}] 🗑️ 已取消收藏: ${item.title || item.bvid}\n`);
+              } else {
+                appendLog(`>>> [${i + 1}/${results.length}] ❌ 取消收藏失败: ${item.title || item.bvid} (${res.message || '未知错误'})\n`);
+              }
+            } catch (err: any) {
+              appendLog(`>>> [${i + 1}/${results.length}] ❌ 取消收藏出错: ${item.title || item.bvid} (${err.message})\n`);
+            }
+            // 延迟防风控
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+          appendLog(`>>> 🏁 默认收藏夹清理完毕。成功取消收藏: ${successCount} 个，失败: ${results.length - successCount} 个。\n`);
+        }
         return;
       }
 
@@ -224,7 +250,7 @@ export function useDownload(settings: Settings) {
     } finally {
       setIsDetecting(false);
     }
-  }, [addToQueue, appendLog]);
+  }, [addToQueue, appendLog, settings]);
 
   /** 手动触发：先取默认收藏夹 ID，再复用 triggerDefaultFavDownload（与定时任务统一入口） */
   const handleDownloadDefaultFav = useCallback(async () => {
