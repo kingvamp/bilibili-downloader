@@ -39,6 +39,7 @@ export function useSettings(appendLog: (msg: string) => void) {
     window.api.setCloseToTray(settings.closeToTray);
     window.api.setNotifyState(settings.notifyState);
     window.api.setSoundState(settings.soundState);
+    window.api.setUnfavAfterDownload(settings.unfavAfterDownload);
     if (settings.clipboardMonitor) {
       window.api.setClipboardMonitor(true);
       appendLog('>>> 📋 剪贴板监听已按偏好设置自动开启\n');

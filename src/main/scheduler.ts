@@ -12,6 +12,7 @@ import { app } from 'electron';
 interface SchedulerConfig {
   autoDownloadFav: boolean;
   lastTriggeredTime: number; // 毫秒时间戳
+  unfavAfterDownload?: boolean; // 下载完成后是否自动从收藏夹移除视频
 }
 
 /** 获取定时配置文件路径 */
@@ -29,12 +30,13 @@ function loadConfig(): SchedulerConfig {
       return {
         autoDownloadFav: typeof parsed.autoDownloadFav === 'boolean' ? parsed.autoDownloadFav : false,
         lastTriggeredTime: typeof parsed.lastTriggeredTime === 'number' ? parsed.lastTriggeredTime : 0,
+        unfavAfterDownload: typeof parsed.unfavAfterDownload === 'boolean' ? parsed.unfavAfterDownload : false,
       };
     }
   } catch (e) {
     console.error('[scheduler] 加载定时配置失败:', e);
   }
-  return { autoDownloadFav: false, lastTriggeredTime: 0 };
+  return { autoDownloadFav: false, lastTriggeredTime: 0, unfavAfterDownload: false };
 }
 
 /** 将配置写入磁盘 */
@@ -127,7 +129,8 @@ export function setupScheduler(): void {
   // 启动时从磁盘恢复开关状态
   const config = loadConfig();
   state.autoDownloadFav = config.autoDownloadFav;
-  console.log(`[scheduler] 已加载定时配置: 每日自动下载开关="${state.autoDownloadFav}"，上次触发时间="${config.lastTriggeredTime ? new Date(config.lastTriggeredTime).toLocaleString() : '无记录'}"`);
+  state.unfavAfterDownload = config.unfavAfterDownload || false;
+  console.log(`[scheduler] 已加载定时配置: 每日自动下载开关="${state.autoDownloadFav}"，下载后自动取消收藏开关="${state.unfavAfterDownload}"，上次触发时间="${config.lastTriggeredTime ? new Date(config.lastTriggeredTime).toLocaleString() : '无记录'}"`);
 
   // IPC：渲染进程查询上次触发的时间戳
   ipcMain.handle('get-last-triggered-time', () => {
@@ -156,6 +159,15 @@ export function setupScheduler(): void {
       // 重新开启时立即做一次检查
       checkAndTriggerAutoDownload();
     }
+  });
+
+  // IPC：渲染进程更新下载后自动取消收藏状态
+  ipcMain.on('set-unfav-after-download', (_event, enabled: boolean) => {
+    state.unfavAfterDownload = enabled;
+    const cfg = loadConfig();
+    cfg.unfavAfterDownload = enabled;
+    saveConfig(cfg);
+    console.log(`[scheduler] 下载后自动取消收藏开关已更新为: "${enabled}"`);
   });
 
   // 监听系统从睡眠/休眠中恢复：唤醒后立即触发一次检查
