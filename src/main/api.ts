@@ -6,6 +6,38 @@ import fs from 'fs';
 import path from 'path';
 import { state, AppPaths } from './state';
 
+/** 从指定收藏夹取消收藏，并统一校验 B 站业务结果和登录凭据。 */
+export async function removeFromFavFolder(aid: number, folderId: number): Promise<{ success: boolean; message?: string }> {
+  if (!state.sessionCookie) return { success: false, message: '请先登录' };
+  try {
+    const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
+    if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
+
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
+      'Cookie': state.sessionCookie,
+      'Content-Type': 'application/x-www-form-urlencoded'
+    };
+
+    const res = await axios.post(
+      'https://api.bilibili.com/x/v3/fav/resource/deal',
+      `rid=${aid}&type=2&add_media_ids=&del_media_ids=${folderId}&platform=web&jsonp=jsonp&csrf=${csrf}`,
+      { headers }
+    );
+
+    if (res.data.code === 0) {
+      return { success: true };
+    }
+    return {
+      success: false,
+      message: `${res.data.message || '取消收藏失败'} (code: ${res.data.code})`
+    };
+  } catch (e: any) {
+    return { success: false, message: e.message };
+  }
+}
+
+/** 注册主进程 API，并恢复本地登录凭据。 */
 export function setupApi() {
   loadCookie();
 
@@ -97,33 +129,9 @@ export function setupApi() {
   });
 
   // 从指定收藏夹中取消收藏某视频
-  ipcMain.handle('remove-from-fav-folder', async (event, aid: number, folderId: number) => {
-    if (!state.sessionCookie) return { success: false, message: '请先登录' };
-    try {
-      const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
-      if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
-
-      const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie,
-        'Content-Type': 'application/x-www-form-urlencoded'
-      };
-
-      const res = await axios.post(
-        'https://api.bilibili.com/x/v3/fav/resource/deal',
-        `rid=${aid}&type=2&add_media_ids=&del_media_ids=${folderId}&platform=web&jsonp=jsonp&csrf=${csrf}`,
-        { headers }
-      );
-
-      if (res.data.code === 0) {
-        return { success: true };
-      } else {
-        return { success: false, message: res.data.message || '取消收藏失败' };
-      }
-    } catch (e: any) {
-      return { success: false, message: e.message };
-    }
-  });
+  ipcMain.handle('remove-from-fav-folder', (_event, aid: number, folderId: number) =>
+    removeFromFavFolder(aid, folderId)
+  );
 
   ipcMain.handle('get-qrcode', async () => {
     try {
