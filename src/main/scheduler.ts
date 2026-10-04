@@ -1,55 +1,55 @@
 // scheduler.ts
-// 定时任务模块：每小时轮询一次 + 系统唤醒后立即触发，自动下载默认收藏夹中的新视频
-// 关联：state.ts（读写 autoDownloadFav）、api.ts（get-default-fav-id 逻辑）、渲染进程（接收 scheduled-fav-download 事件）
+// 定时任务模块：electron-store 负责 scheduler.json 的原子持久化；轮询与唤醒逻辑保持原行为。
 
 import { ipcMain, powerMonitor } from 'electron';
-import fs from 'fs';
 import axios from 'axios';
+import Store from 'electron-store';
 import { state } from './state';
-import path from 'path';
-import { app } from 'electron';
 
 interface SchedulerConfig {
   autoDownloadFav: boolean;
-  lastTriggeredTime: number; // 毫秒时间戳
-  unfavAfterDownload?: boolean; // 下载完成后是否自动从收藏夹移除视频
+  lastTriggeredTime: number;
+  unfavAfterDownload?: boolean;
 }
 
-/** 获取定时配置文件路径 */
-function getSchedulerConfigPath(): string {
-  return path.join(app.getPath('userData'), 'scheduler.json');
+const DEFAULT_SCHEDULER_CONFIG: SchedulerConfig = {
+  autoDownloadFav: false,
+  lastTriggeredTime: 0,
+  unfavAfterDownload: false
+};
+
+let schedulerStore: Store<SchedulerConfig> | null = null;
+
+function getSchedulerStore(): Store<SchedulerConfig> {
+  if (!schedulerStore) {
+    schedulerStore = new Store<SchedulerConfig>({
+      name: 'scheduler',
+      defaults: DEFAULT_SCHEDULER_CONFIG
+    });
+  }
+  return schedulerStore;
 }
 
-/** 从磁盘加载每日下载配置 */
 function loadConfig(): SchedulerConfig {
   try {
-    const configPath = getSchedulerConfigPath();
-    if (fs.existsSync(configPath)) {
-      const raw = fs.readFileSync(configPath, 'utf-8').trim();
-      const parsed = JSON.parse(raw);
-      return {
-        autoDownloadFav: typeof parsed.autoDownloadFav === 'boolean' ? parsed.autoDownloadFav : false,
-        lastTriggeredTime: typeof parsed.lastTriggeredTime === 'number' ? parsed.lastTriggeredTime : 0,
-        unfavAfterDownload: typeof parsed.unfavAfterDownload === 'boolean' ? parsed.unfavAfterDownload : false,
-      };
-    }
+    return {
+      ...DEFAULT_SCHEDULER_CONFIG,
+      ...getSchedulerStore().store
+    };
   } catch (e) {
     console.error('[scheduler] 加载定时配置失败:', e);
+    return { ...DEFAULT_SCHEDULER_CONFIG };
   }
-  return { autoDownloadFav: false, lastTriggeredTime: 0, unfavAfterDownload: false };
 }
 
-/** 将配置写入磁盘 */
 function saveConfig(config: SchedulerConfig): void {
   try {
-    const configPath = getSchedulerConfigPath();
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+    getSchedulerStore().store = config;
   } catch (e) {
     console.error('[scheduler] 保存定时配置失败:', e);
   }
 }
 
-/** 从 B 站 API 获取当前账号默认收藏夹 ID，登录失效时返回 null */
 async function fetchDefaultFavId(): Promise<number | null> {
   if (!state.sessionCookie) return null;
   try {
@@ -74,10 +74,8 @@ async function fetchDefaultFavId(): Promise<number | null> {
   return null;
 }
 
-// 内存中记录最后一次提示未登录的时间，防止日志刷屏
 let lastWarnedNoLoginTime = 0;
 
-/** 检查开关状态并触发自动下载 */
 async function checkAndTriggerAutoDownload(): Promise<void> {
   if (!state.autoDownloadFav) return;
 
@@ -89,8 +87,6 @@ async function checkAndTriggerAutoDownload(): Promise<void> {
     return;
   }
 
-  // 如果未登录，不触发也不更新 lastTriggeredTime（等待登录后再触发）
-  // 但为了给用户提示，每过 1 小时最多提示一次
   if (!state.sessionCookie) {
     if (now - lastWarnedNoLoginTime >= 60 * 60 * 1000) {
       lastWarnedNoLoginTime = now;
@@ -119,49 +115,35 @@ async function checkAndTriggerAutoDownload(): Promise<void> {
   console.log(`[scheduler] 获取到收藏夹 ID: ${favId}，通知渲染进程执行下载`);
   state.mainWindow.webContents.send('scheduled-fav-download', String(favId), null);
 
-  // 成功触发后，更新上次触发时间戳并保存
   config.lastTriggeredTime = now;
   saveConfig(config);
 }
 
-/** 注册定时调度器 */
 export function setupScheduler(): void {
-  // 启动时从磁盘恢复开关状态
   const config = loadConfig();
   state.autoDownloadFav = config.autoDownloadFav;
   state.unfavAfterDownload = config.unfavAfterDownload || false;
-  console.log(`[scheduler] 已加载定时配置: 每日自动下载开关="${state.autoDownloadFav}"，下载后自动取消收藏开关="${state.unfavAfterDownload}"，上次触发时间="${config.lastTriggeredTime ? new Date(config.lastTriggeredTime).toLocaleString() : '无记录'}"`);
+  console.log(
+    `[scheduler] 已加载定时配置: 每日自动下载开关="${state.autoDownloadFav}"，下载后自动取消收藏开关="${state.unfavAfterDownload}"，上次触发时间="${config.lastTriggeredTime ? new Date(config.lastTriggeredTime).toLocaleString() : '无记录'}"`
+  );
 
-  // IPC：渲染进程查询上次触发的时间戳
-  ipcMain.handle('get-last-triggered-time', () => {
-    const cfg = loadConfig();
-    return cfg.lastTriggeredTime;
-  });
+  ipcMain.handle('get-last-triggered-time', () => loadConfig().lastTriggeredTime);
 
-  // IPC：渲染进程查询自动下载开关状态
-  ipcMain.handle('get-auto-download-fav', () => {
-    return state.autoDownloadFav;
-  });
+  ipcMain.handle('get-auto-download-fav', () => state.autoDownloadFav);
 
-  // IPC：渲染进程更新自动下载开关状态
   ipcMain.on('set-auto-download-fav', (_event, enabled: boolean) => {
     state.autoDownloadFav = enabled;
     const cfg = loadConfig();
     cfg.autoDownloadFav = enabled;
-    // 如果关闭后又重新开启，为了响应可能积压的任务，我们将 lastTriggeredTime 重置为 0，以便立即触发一次
-    if (enabled) {
-      cfg.lastTriggeredTime = 0;
-    }
+    if (enabled) cfg.lastTriggeredTime = 0;
     saveConfig(cfg);
     console.log(`[scheduler] 每日自动下载开关已更新为: "${enabled}"`);
-    
+
     if (enabled) {
-      // 重新开启时立即做一次检查
-      checkAndTriggerAutoDownload();
+      void checkAndTriggerAutoDownload();
     }
   });
 
-  // IPC：渲染进程更新下载后自动取消收藏状态
   ipcMain.on('set-unfav-after-download', (_event, enabled: boolean) => {
     state.unfavAfterDownload = enabled;
     const cfg = loadConfig();
@@ -170,20 +152,17 @@ export function setupScheduler(): void {
     console.log(`[scheduler] 下载后自动取消收藏开关已更新为: "${enabled}"`);
   });
 
-  // 监听系统从睡眠/休眠中恢复：唤醒后立即触发一次检查
   powerMonitor.on('resume', () => {
     console.log('[scheduler] 系统从睡眠中唤醒，立即触发自动下载检查...');
-    checkAndTriggerAutoDownload();
+    void checkAndTriggerAutoDownload();
   });
 
-  // 启动后延迟 10 秒进行首次检查（确保渲染进程完成初始化与 Cookie 加载）
   setTimeout(() => {
     console.log('[scheduler] 执行启动后首次自动下载检查...');
-    checkAndTriggerAutoDownload();
+    void checkAndTriggerAutoDownload();
   }, 10 * 1000);
 
-  // 每 1 小时轮询一次（覆盖电脑持续开机的场景）
   setInterval(() => {
-    checkAndTriggerAutoDownload();
+    void checkAndTriggerAutoDownload();
   }, 60 * 60 * 1000);
 }
