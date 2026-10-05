@@ -1,3 +1,4 @@
+// Electron 渲染进程接口声明：与 preload.ts 暴露的 IPC 桥保持一致。
 // TypeScript 类型声明文件：定义 Electron API 接口类型以支持渲染进程的类型安全和自动补全。
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-electron/renderer" />
@@ -30,7 +31,7 @@ interface IElectronAPI {
   getLastTriggeredTime: () => Promise<number>;
   setAutoDownloadFav: (enabled: boolean) => void;
   setUnfavAfterDownload: (enabled: boolean) => void;
-  onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => void;
+  onScheduledFavDownload: (callback: (message: string | null) => void) => void;
   
   onClipboardMatch: (callback: (url: string) => void) => void;
   onSilentClipboardMatch: (callback: (url: string) => void) => void; 

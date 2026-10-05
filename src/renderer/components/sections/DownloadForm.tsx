@@ -1,11 +1,11 @@
+// 下载入口视图：从 useDownload 接收统一流程占用状态并禁用重复启动入口。
 import { UserInfo } from '../../types';
 
 interface DownloadFormProps {
     userInfo: UserInfo;
     urlInput: string;
     setUrlInput: (val: string) => void;
-    isDownloading: boolean;
-    isPaused: boolean;
+    isWorkflowBusy: boolean;
     isCheckingDuplicates: boolean;
     hasTasks: boolean;
     onDownload: () => void;
@@ -16,12 +16,12 @@ interface DownloadFormProps {
     appendLog: (msg: string) => void;
 }
 
+/** 展示下载输入、默认收藏夹及检测入口。 */
 export function DownloadForm({
     userInfo,
     urlInput,
     setUrlInput,
-    isDownloading,
-    isPaused,
+    isWorkflowBusy,
     isCheckingDuplicates,
     hasTasks,
     onDownload,
@@ -46,6 +46,7 @@ export function DownloadForm({
                 </button>
                 <button
                     className="shortcut-btn"
+                    disabled={isWorkflowBusy}
                     onClick={async () => {
                         if (!userInfo.mid) return alert('请先扫码登录后再使用此功能');
                         onDownloadDefaultFav();
@@ -57,7 +58,7 @@ export function DownloadForm({
                 <button
                     className="shortcut-btn"
                     style={{ background: '#34495e' }}
-                    disabled={isDetecting}
+                    disabled={isWorkflowBusy}
                     onClick={onDetectFavlist}
                 >
                     <svg viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" /></svg>
@@ -75,7 +76,7 @@ export function DownloadForm({
                 <button
                     className="download-btn"
                     onClick={onDownload}
-                    disabled={isDownloading || isPaused || isCheckingDuplicates || isDetecting || (urlInput.trim() === '' && !hasTasks)}
+                    disabled={isWorkflowBusy || (urlInput.trim() === '' && !hasTasks)}
                 >
                     {isCheckingDuplicates ? '预查重中...' : '下载'}
                 </button>

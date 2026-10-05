@@ -1,10 +1,9 @@
 // scheduler.ts
 // 定时任务模块：每小时轮询一次 + 系统唤醒后立即触发，自动下载默认收藏夹中的新视频
-// 关联：state.ts（读写 autoDownloadFav）、api.ts（get-default-fav-id 逻辑）、渲染进程（接收 scheduled-fav-download 事件）
+// 关联：state.ts（读写 autoDownloadFav）、渲染进程（收到 scheduled-fav-download 后取得执行权并查询默认收藏夹）
 
 import { ipcMain, powerMonitor } from 'electron';
 import fs from 'fs';
-import axios from 'axios';
 import { state } from './state';
 import path from 'path';
 import { app } from 'electron';
@@ -49,36 +48,11 @@ function saveConfig(config: SchedulerConfig): void {
   }
 }
 
-/** 从 B 站 API 获取当前账号默认收藏夹 ID，登录失效时返回 null */
-async function fetchDefaultFavId(): Promise<number | null> {
-  if (!state.sessionCookie) return null;
-  try {
-    const headers = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-      'Cookie': state.sessionCookie
-    };
-    const navRes = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
-    if (navRes.data.code !== 0 || !navRes.data.data.isLogin) return null;
-
-    const mid = navRes.data.data.mid;
-    const favRes = await axios.get(
-      `https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${mid}`,
-      { headers }
-    );
-    if (favRes.data.code === 0 && favRes.data.data.list?.length > 0) {
-      return favRes.data.data.list[0].id;
-    }
-  } catch (e) {
-    console.error('[scheduler] 获取默认收藏夹 ID 失败:', e);
-  }
-  return null;
-}
-
 // 内存中记录最后一次提示未登录的时间，防止日志刷屏
 let lastWarnedNoLoginTime = 0;
 
-/** 检查开关状态并触发自动下载 */
-async function checkAndTriggerAutoDownload(): Promise<void> {
+/** 检查开关状态并发送自动下载触发通知，不独立启动网络查询。 */
+function checkAndTriggerAutoDownload(): void {
   if (!state.autoDownloadFav) return;
 
   const config = loadConfig();
@@ -96,30 +70,17 @@ async function checkAndTriggerAutoDownload(): Promise<void> {
       lastWarnedNoLoginTime = now;
       state.mainWindow.webContents.send(
         'scheduled-fav-download',
-        null,
         '⚠️ 每日自动下载触发，但检测到当前未登录，已跳过。请登录后等待下一次轮询。'
       );
     }
     return;
   }
 
-  console.log('[scheduler] ⏰ 满足每日自动下载条件（距离上次超过24小时），开始获取默认收藏夹...');
-  const favId = await fetchDefaultFavId();
+  // 定时器只发出意图；收藏夹查询必须由渲染进程取得流程执行权后发起。
+  console.log('[scheduler] ⏰ 通知渲染进程尝试自动下载默认收藏夹');
+  state.mainWindow.webContents.send('scheduled-fav-download', null);
 
-  if (!favId) {
-    console.warn('[scheduler] 未能获取默认收藏夹 ID，跳过');
-    state.mainWindow.webContents.send(
-      'scheduled-fav-download',
-      null,
-      '⚠️ 每日自动下载触发，但未能获取默认收藏夹 ID，已跳过。'
-    );
-    return;
-  }
-
-  console.log(`[scheduler] 获取到收藏夹 ID: ${favId}，通知渲染进程执行下载`);
-  state.mainWindow.webContents.send('scheduled-fav-download', String(favId), null);
-
-  // 成功触发后，更新上次触发时间戳并保存
+  // 发出触发通知后，更新上次触发时间戳并保存
   config.lastTriggeredTime = now;
   saveConfig(config);
 }

@@ -42,9 +42,9 @@ contextBridge.exposeInMainWorld('api', {
   getLastTriggeredTime: () => ipcRenderer.invoke('get-last-triggered-time'),
   setAutoDownloadFav: (enabled: boolean) => ipcRenderer.send('set-auto-download-fav', enabled),
   setUnfavAfterDownload: (enabled: boolean) => ipcRenderer.send('set-unfav-after-download', enabled),
-  onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => {
+  onScheduledFavDownload: (callback: (message: string | null) => void) => {
     ipcRenderer.removeAllListeners('scheduled-fav-download');
-    ipcRenderer.on('scheduled-fav-download', (_event: IpcRendererEvent, favId: string | null, message: string | null) => callback(favId, message));
+    ipcRenderer.on('scheduled-fav-download', (_event: IpcRendererEvent, message: string | null) => callback(message));
   },
   
   onClipboardMatch: (callback: (url: string) => void) => {

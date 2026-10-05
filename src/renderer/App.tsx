@@ -1,3 +1,4 @@
+// 主界面：连接认证、设置和统一下载流程，将状态传给各展示组件。
 import { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useSettings } from './hooks/useSettings';
@@ -13,6 +14,7 @@ import { SettingsModal } from './components/modals/SettingsModal';
 import { ConfirmModal } from './components/modals/ConfirmModal';
 import { MissingVideosModal } from './components/modals/MissingVideosModal';
 
+/** 组装下载界面及其弹窗和流程控制入口。 */
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
@@ -33,6 +35,7 @@ function App() {
     completedTasks,
     subProgress,
     isCheckingDuplicates,
+    isWorkflowBusy,
     redownloadConfirm,
     handleRedownloadResponse,
     handleDownload,
@@ -80,8 +83,7 @@ function App() {
           userInfo={userInfo}
           urlInput={urlInput}
           setUrlInput={setUrlInput}
-          isDownloading={isDownloading}
-          isPaused={isPaused}
+          isWorkflowBusy={isWorkflowBusy}
           isCheckingDuplicates={isCheckingDuplicates}
           hasTasks={totalTasks > 0}
           onDownload={handleDownload}
@@ -134,7 +136,7 @@ function App() {
               继续
             </button>
           )}
-          <button className="control-btn stop-btn" onClick={handleStop} disabled={!isDownloading && !isPaused && totalTasks === 0}>
+          <button className="control-btn stop-btn" onClick={handleStop} disabled={!isWorkflowBusy}>
             <svg viewBox="0 0 24 24"><path d="M6 6h12v12H6z"/></svg>
             停止全部任务
           </button>

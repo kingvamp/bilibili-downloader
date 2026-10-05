@@ -6,8 +6,18 @@ import fs from 'fs';
 import path from 'path';
 import { state, AppPaths } from './state';
 
+// 下载完成与 IPC 清理共用一个取消收藏队列，任何时刻只发送一个请求。
+let removalQueue: Promise<void> = Promise.resolve();
+
+/** 串行安排取消收藏请求，某次失败不会阻塞后续请求。 */
+export function removeFromFavFolder(aid: number, folderId: number): Promise<{ success: boolean; message?: string }> {
+  const request = removalQueue.then(() => requestRemoval(aid, folderId));
+  removalQueue = request.then(() => undefined, error => { console.error('取消收藏队列异常:', error); });
+  return request;
+}
+
 /** 从指定收藏夹取消收藏，并统一校验 B 站业务结果和登录凭据。 */
-export async function removeFromFavFolder(aid: number, folderId: number): Promise<{ success: boolean; message?: string }> {
+async function requestRemoval(aid: number, folderId: number): Promise<{ success: boolean; message?: string }> {
   if (!state.sessionCookie) return { success: false, message: '请先登录' };
   try {
     const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
