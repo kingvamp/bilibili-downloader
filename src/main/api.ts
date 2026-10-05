@@ -4,7 +4,9 @@ import axios from 'axios';
 import QRCode from 'qrcode';
 import fs from 'fs';
 import path from 'path';
+import fg from 'fast-glob';
 import { state, AppPaths } from './state';
+import { loadSessionCookie, saveSessionCookie, clearSessionCookie } from './storage';
 
 /** 从指定收藏夹取消收藏，并统一校验 B 站业务结果和登录凭据。 */
 export async function removeFromFavFolder(aid: number, folderId: number): Promise<{ success: boolean; message?: string }> {
@@ -39,7 +41,7 @@ export async function removeFromFavFolder(aid: number, folderId: number): Promis
 
 /** 注册主进程 API，并恢复本地登录凭据。 */
 export function setupApi() {
-  loadCookie();
+  state.sessionCookie = loadSessionCookie();
 
 
   ipcMain.handle('get-user-info', async () => {
@@ -61,9 +63,7 @@ export function setupApi() {
       
       // Cookie 已过期或被踢下线，自动清理
       state.sessionCookie = '';
-      if (fs.existsSync(AppPaths.cookiePath)) {
-        fs.unlinkSync(AppPaths.cookiePath);
-      }
+      clearSessionCookie();
       return { isLogin: false };
     } catch (e: any) { 
       return { isLogin: false, error: e.message }; 
@@ -73,11 +73,7 @@ export function setupApi() {
   // 手动退出登录
   ipcMain.handle('logout', async () => {
     state.sessionCookie = '';
-    try {
-      if (fs.existsSync(AppPaths.cookiePath)) {
-        fs.unlinkSync(AppPaths.cookiePath);
-      }
-    } catch (e) {}
+    clearSessionCookie();
     return { success: true };
   });
 
@@ -151,7 +147,7 @@ export function setupApi() {
         const cookies = res.headers['set-cookie'];
         if (cookies) {
           state.sessionCookie = cookies.map((c: string) => c.split(';')[0]).join('; ');
-          fs.writeFileSync(AppPaths.cookiePath, state.sessionCookie);
+          saveSessionCookie(state.sessionCookie);
           return { status: 'success' };
         }
       } 
@@ -173,36 +169,36 @@ export function setupApi() {
     const targetDir = filePaths[0];
     const foundBvids = new Set<string>();
 
-    const scanDir = (dir: string) => {
-      const files = fs.readdirSync(dir);
-      for (const file of files) {
-        const fullPath = path.join(dir, file);
-        const stats = fs.statSync(fullPath);
-        if (stats.isDirectory()) {
-          scanDir(fullPath);
-        } else if (stats.isFile()) {
-          // 匹配视频和音频常用后缀
-          if (/\.(mp4|flv|mkv|mp3|m4a|xml|ass)$/i.test(file)) {
-            const matchBv = file.match(/BV[a-zA-Z0-9]{10}/);
-            if (matchBv) {
-              foundBvids.add(matchBv[0]);
-            } else {
-              const matchAv = file.match(/av(\d+)/i);
-              if (matchAv) {
-                 try {
-                   const { avToBv } = require('../renderer/utils/bilibili');
-                   const bvid = avToBv(matchAv[1]);
-                   foundBvids.add(bvid);
-                 } catch (e) { console.error('avToBv convert error:', e); }
-              }
-            }
+    try {
+      const mediaFiles = await fg(
+        ['**/*.{mp4,flv,mkv,mp3,m4a,xml,ass}'],
+        {
+          cwd: targetDir,
+          onlyFiles: true,
+          caseSensitiveMatch: false,
+          absolute: false,
+          suppressErrors: true
+        }
+      );
+
+      for (const relativePath of mediaFiles) {
+        const file = path.basename(relativePath);
+        const matchBv = file.match(/BV[a-zA-Z0-9]{10}/);
+        if (matchBv) {
+          foundBvids.add(matchBv[0]);
+          continue;
+        }
+
+        const matchAv = file.match(/av(\d+)/i);
+        if (matchAv) {
+          try {
+            const { avToBv } = require('../renderer/utils/bilibili');
+            foundBvids.add(avToBv(matchAv[1]));
+          } catch (e) {
+            console.error('avToBv convert error:', e);
           }
         }
       }
-    };
-
-    try {
-      scanDir(targetDir);
       
       // 读取现有历史并合并
       let existingHistory = '';
@@ -242,12 +238,4 @@ export function setupApi() {
     }
   });
 
-}
-
-function loadCookie(): void {
-  try {
-    if (fs.existsSync(AppPaths.cookiePath)) {
-      state.sessionCookie = fs.readFileSync(AppPaths.cookiePath, 'utf-8').trim();
-    }
-  } catch (e) { console.error(e); }
 }
