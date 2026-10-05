@@ -3,7 +3,7 @@
 /// <reference types="vite-plugin-electron/renderer" />
 
 interface IElectronAPI {
-  startDownload: (url: string, isBatch?: boolean, dlSub?: boolean, downloadDir?: string, isSilent?: boolean, isMultiThread?: boolean, aid?: number, mediaId?: number) => void;
+  startDownload: (url: string, isBatch?: boolean, isSilent?: boolean, aid?: number, mediaId?: number) => void;
   stopDownload: () => void;
   onProgress: (callback: (data: string) => void) => void;
   onComplete: (callback: (code: number) => void) => void;
@@ -20,16 +20,12 @@ interface IElectronAPI {
   selectFolder: () => Promise<string | null>;
   scanFolderForHistory: () => Promise<{ success: boolean, message?: string, foundCount?: number, addedCount?: number, totalInHistory?: number }>;
   getHistoryCount: () => Promise<number>;
-  setClipboardMonitor: (state: boolean) => void;
-  setCloseToTray: (state: boolean) => void;
-  setNotifyState: (state: boolean) => void;
-  setSoundState: (state: boolean) => void;
+  getSettings: () => Promise<import('./shared/settings').Settings>;
+  saveSettings: (settings: import('./shared/settings').Settings) => Promise<{ success: boolean }>;
   notifyQueueDone: () => void;
 
   // 每日自动下载
   getLastTriggeredTime: () => Promise<number>;
-  setAutoDownloadFav: (enabled: boolean) => void;
-  setUnfavAfterDownload: (enabled: boolean) => void;
   onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => void;
   
   onClipboardMatch: (callback: (url: string) => void) => void;
