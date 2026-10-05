@@ -211,7 +211,7 @@ export function setupDownloader() {
 
 
 
-    if (isMultiThread) {
+    if (multiThread) {
         args.push('-mt');
         event.sender.send('download-progress', `>>> ⚡ 已开启多线程分块下载，全力加速中...\n`);
     }
