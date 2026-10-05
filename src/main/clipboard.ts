@@ -1,13 +1,12 @@
-import { clipboard, ipcMain } from 'electron';
+import { clipboard } from 'electron';
 import { state } from './state';
+import { getSetting, settingsStore } from './settings';
 
 let clipboardTimer: NodeJS.Timeout | null = null;
 
 export function setupClipboard() {
-  ipcMain.on('set-clipboard-monitor', (event, s) => {
-    state.isNormalClipboardMonitoring = s;
-    if (s) state.lastClipboardText = '';
-    console.log(`[Main] Clipboard monitoring set to: ${s}`);
+  settingsStore.onDidChange('clipboardMonitor', enabled => {
+    if (enabled) state.lastClipboardText = '';
   });
 
   // 1-second poll is efficient enough and avoids native dependency issues
@@ -31,7 +30,7 @@ export function setupClipboard() {
         }
 
         // Handle Normal Bilibili URL matching
-        if (state.isNormalClipboardMonitoring) {
+        if (getSetting('clipboardMonitor')) {
           if (/bilibili\.com|b23\.tv/i.test(text)) {
             if (state.mainWindow) {
               console.log(`[Clipboard] Found matching URL, notifying renderer...`);
