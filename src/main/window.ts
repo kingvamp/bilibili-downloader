@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, Tray, Menu, shell, dialog } from 'electron';
 import path from 'path';
 import { state } from './state';
+import { getSetting } from './settings';
 
 export function setupWindow() {
   createWindow();
@@ -13,7 +14,7 @@ export function setupWindow() {
   });
 
   ipcMain.on('window-close', () => {
-    if (state.isCloseToTray) {
+    if (getSetting('closeToTray')) {
       state.mainWindow?.hide(); 
     } else {
       state.isQuitting = true;  
@@ -21,17 +22,6 @@ export function setupWindow() {
     }
   });
 
-  ipcMain.on('set-close-to-tray', (event, s) => {
-    state.isCloseToTray = s;
-  });
-
-  ipcMain.on('set-notify-state', (event, s) => {
-    state.isNotifyEnabled = s;
-  });
-  
-  ipcMain.on('set-sound-state', (event, s) => {
-    state.isSoundEnabled = s;
-  });
 
   ipcMain.on('open-external', (event, url) => {
     shell.openExternal(url);
@@ -75,7 +65,7 @@ function createWindow(): void {
   });
 
   state.mainWindow.on('close', (event) => {
-    if (!state.isQuitting && state.isCloseToTray) {
+    if (!state.isQuitting && getSetting('closeToTray')) {
       event.preventDefault(); 
       state.mainWindow?.hide();     
     }
