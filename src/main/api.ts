@@ -5,8 +5,13 @@ import QRCode from 'qrcode';
 import fs from 'fs';
 import path from 'path';
 import fg from 'fast-glob';
+import Store from 'electron-store';
 import { state, AppPaths } from './state';
-import { loadSessionCookie, saveSessionCookie, clearSessionCookie } from './storage';
+
+const authStore = new Store<{ sessionCookie: string }>({
+  name: 'auth',
+  defaults: { sessionCookie: '' }
+});
 
 /** 从指定收藏夹取消收藏，并统一校验 B 站业务结果和登录凭据。 */
 export async function removeFromFavFolder(aid: number, folderId: number): Promise<{ success: boolean; message?: string }> {
@@ -41,7 +46,7 @@ export async function removeFromFavFolder(aid: number, folderId: number): Promis
 
 /** 注册主进程 API，并恢复本地登录凭据。 */
 export function setupApi() {
-  state.sessionCookie = loadSessionCookie();
+  state.sessionCookie = authStore.get('sessionCookie');
 
 
   ipcMain.handle('get-user-info', async () => {
@@ -63,7 +68,7 @@ export function setupApi() {
       
       // Cookie 已过期或被踢下线，自动清理
       state.sessionCookie = '';
-      clearSessionCookie();
+      authStore.delete('sessionCookie');
       return { isLogin: false };
     } catch (e: any) { 
       return { isLogin: false, error: e.message }; 
@@ -73,7 +78,7 @@ export function setupApi() {
   // 手动退出登录
   ipcMain.handle('logout', async () => {
     state.sessionCookie = '';
-    clearSessionCookie();
+    authStore.delete('sessionCookie');
     return { success: true };
   });
 
@@ -147,7 +152,7 @@ export function setupApi() {
         const cookies = res.headers['set-cookie'];
         if (cookies) {
           state.sessionCookie = cookies.map((c: string) => c.split(';')[0]).join('; ');
-          saveSessionCookie(state.sessionCookie);
+          authStore.set('sessionCookie', state.sessionCookie);
           return { status: 'success' };
         }
       } 
