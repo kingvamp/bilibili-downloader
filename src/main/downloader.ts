@@ -7,6 +7,7 @@ import axios from 'axios';
 import { execa } from 'execa';
 import { state, AppPaths } from './state';
 import { removeFromFavFolder } from './api';
+import { shouldUnfavAfterDownload } from './scheduler';
 
 function decodeChunk(decoder: TextDecoder, data: Buffer | string): string {
   return typeof data === 'string' ? data : decoder.decode(data, { stream: true });
@@ -262,7 +263,7 @@ export function setupDownloader() {
 
           await syncDownloadHistory(workDir, rawUrl, code === 0);
 
-          if (code === 0 && aid && mediaId && state.unfavAfterDownload) {
+          if (code === 0 && aid && mediaId && shouldUnfavAfterDownload()) {
             const removeResult = await removeFromFavFolder(aid, mediaId);
             if (removeResult.success) {
               event.sender.send('download-progress', `>>> 🗑️ 已从收藏夹移除: ${rawUrl}\n`);
