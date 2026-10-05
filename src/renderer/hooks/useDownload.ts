@@ -233,7 +233,10 @@ export function useDownload(settings: Settings) {
     if (!run) return;
     setIsDetecting(true);
     try {
-      await downloadDefaultFavorites({ settings, workflow: run, appendLog, addToQueue });
+      // 设置保存可立即触发定时通知，取得执行权后读取主进程的已保存设置。
+      const currentSettings = await window.api.getSettings();
+      if (run.stopped) return;
+      await downloadDefaultFavorites({ settings: currentSettings, workflow: run, appendLog, addToQueue });
     } catch (e: any) {
       appendLog(`>>> ❌ 自动任务执行失败: ${e.message}\n`);
     } finally {
@@ -378,7 +381,7 @@ export function useDownload(settings: Settings) {
         }
       }
     });
-    api.onComplete((code: number) => {
+    api.onComplete((code: number | null) => {
       appendLog(`\n====== 任务结束 (Code: ${code}) ======\n`);
       currentTaskRef.current = null;
       setIsDownloading(false);
@@ -437,10 +440,7 @@ export function useDownload(settings: Settings) {
       window.api.startDownload(
         inputUrl,
         isBatch,
-        settings.dlSub,
-        settings.downloadDir,
         taskToStart.isSilent,
-        settings.multiThread,
         taskToStart.aid,
         taskToStart.mediaId
       );

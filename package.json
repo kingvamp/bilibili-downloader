@@ -6,6 +6,8 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
+    "test": "node --test tests/*.test.cjs",
+    "test:packaged": "node tests/run-packaged-smoke.cjs",
     "build": "tsc && vite build",
     "start": "electron .",
     "watch": "vite",
@@ -13,7 +15,6 @@
     "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
-    "@types/electron": "^1.6.10",
     "@types/node": "^20.11.0",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.2.14",
@@ -29,10 +30,12 @@
   },
   "dependencies": {
     "axios": "^1.6.5",
-    "clipboard-event": "^1.6.0",
+    "electron-store": "8.2.0",
+    "execa": "8.0.1",
     "qrcode": "^1.5.3",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "fast-glob": "3.3.3"
   },
   "build": {
     "appId": "com.enhancer.bilibilidownloader",

@@ -5,19 +5,7 @@ export interface UserInfo {
   mid?: number;
 }
 
-export interface Settings {
-  downloadDir: string;
-  clipboardMonitor: boolean;
-  dlSub: boolean;
-  multiThread: boolean;
-  closeToTray: boolean;
-  notifyState: boolean;
-  soundState: boolean;
-  /** 是否开启每日自动下载默认收藏夹 */
-  autoDownloadFav: boolean;
-  /** 下载完成后自动从收藏夹移除视频（仅限默认收藏夹下载流程） */
-  unfavAfterDownload: boolean;
-}
+export type { Settings } from '../shared/settings';
 
 export interface DownloadTask {
   url: string;

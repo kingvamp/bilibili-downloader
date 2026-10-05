@@ -1,11 +1,30 @@
 // 主进程下载模块：管理 BBDown 下载与历史同步，复用 api.ts 在下载成功后取消收藏。
 import { app, ipcMain, Notification, shell, clipboard } from 'electron';
 import path from 'path';
-import { spawn } from 'child_process';
 import fs from 'fs';
 import axios from 'axios';
+import { execa } from 'execa';
+import fg from 'fast-glob';
 import { state, AppPaths } from './state';
 import { removeFromFavFolder } from './api';
+import { getSetting, getSettings } from './settings';
+import { getCookie } from './auth';
+
+/** 按流解码 GBK，保留跨数据块的多字节字符。 */
+function decodeChunk(decoder: TextDecoder, data: Buffer | string): string {
+  return typeof data === 'string' ? data : decoder.decode(data, { stream: true });
+}
+
+/** 获取 BBDown 元数据，启动失败或超时交给调用方明确记录。 */
+async function inspectWithBBDown(downloaderPath: string, url: string): Promise<string> {
+  const result = await execa(downloaderPath, [url, '--only-show-info'], {
+    timeout: 15000,
+    all: true,
+    encoding: null,
+    windowsHide: true
+  });
+  return new TextDecoder('gbk').decode(result.all ?? new Uint8Array());
+}
 
 /** 注册下载控制、历史检查和队列完成通知。 */
 export function setupDownloader() {
@@ -21,7 +40,7 @@ export function setupDownloader() {
 
     const headers = { 
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie || '',
+        'Cookie': getCookie() || '',
         'Referer': 'https://www.bilibili.com/',
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
@@ -128,16 +147,7 @@ export function setupDownloader() {
             const binDir = app.isPackaged ? path.join(process.resourcesPath, 'bin') : path.join(__dirname, '../bin');
             const downloaderPath = path.join(binDir, 'BBDown.exe');
 
-            const infoOutput = await new Promise<string>((resolve) => {
-                const child = spawn(downloaderPath, [url, '--only-show-info']);
-                const decoder = new TextDecoder('gbk');
-                let out = '';
-
-                child.stdout.on('data', (d) => out += decoder.decode(d));
-                child.stderr.on('data', (d) => out += decoder.decode(d));
-                child.on('close', () => resolve(out));
-                setTimeout(() => { child.kill(); resolve(out); }, 15000); 
-            });
+            const infoOutput = await inspectWithBBDown(downloaderPath, url);
 
             const bvidMatches = infoOutput.match(/BV[a-zA-Z0-9]{10}/g);
             if (bvidMatches) {
@@ -163,7 +173,7 @@ export function setupDownloader() {
   });
 
   ipcMain.on('queue-finished', () => {
-    if (state.isNotifyEnabled && Notification.isSupported()) {
+    if (getSettings().notifyState && Notification.isSupported()) {
         new Notification({
             title: '🎉 所有任务已下载完成',
             body: '您的批量下载队列已全部处理完毕！',
@@ -171,7 +181,7 @@ export function setupDownloader() {
         }).show();
     }
 
-    if (state.isSoundEnabled) {
+    if (getSettings().soundState) {
         shell.beep();
     }
 
@@ -180,9 +190,10 @@ export function setupDownloader() {
     }
   });
 
-  ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSilent, isMultiThread, aid?: number, mediaId?: number) => {
+  ipcMain.on('start-download', (event, rawUrl, isBatch, isSilent, aid?: number, mediaId?: number) => {
     if (!rawUrl) return;
 
+    const { dlSub, downloadDir, multiThread } = getSettings();
     const binDir = app.isPackaged 
         ? path.join(process.resourcesPath, 'bin') 
         : path.join(__dirname, '../bin');
@@ -197,7 +208,7 @@ export function setupDownloader() {
 
 
 
-    if (isMultiThread) {
+    if (multiThread) {
         args.push('-mt');
         event.sender.send('download-progress', `>>> ⚡ 已开启多线程分块下载，全力加速中...\n`);
     }
@@ -211,115 +222,95 @@ export function setupDownloader() {
         args.push('--multi-file-pattern', '[<ownerName>] [<videoDate:yyyyMMdd>] <videoTitle> - P<pageNumberWithZero> <pageTitle> [<bvid>]');
     }
 
-    if (state.sessionCookie) {
+    if (getCookie()) {
         args.push('-ua', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-        args.push('-c', state.sessionCookie);
+        args.push('-c', getCookie());
     }
 
-    if (state.currentChild) {
-        state.currentChild.kill();
-    }
+    state.currentChild?.kill();
 
-    state.currentChild = spawn(downloaderPath, args);
-    const child = state.currentChild; 
-    const decoder = new TextDecoder('gbk'); 
-    
-    if (child.stdout) {
-        child.stdout.on('data', (data) => {
-          let text = decoder.decode(data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-          event.sender.send('download-progress', text);
-        });
-    }
-    
-    if (child.stderr) {
-        child.stderr.on('data', (data) => {
-          let text = decoder.decode(data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
-          event.sender.send('download-progress', text);
-        });
-    }
-    
-    child.on('close', async (code) => {
-        if (state.currentChild === child) {
-            state.currentChild = null;
+    // 输出由进度事件实时消费，禁用 execa 缓冲以免长任务达到输出上限被中止。
+    const child = execa(downloaderPath, args, { reject: false, buffer: false, windowsHide: true });
+    state.currentChild = child;
+    const stdoutDecoder = new TextDecoder('gbk');
+    const stderrDecoder = new TextDecoder('gbk');
+
+    child.stdout?.on('data', data => {
+        event.sender.send('download-progress', decodeChunk(stdoutDecoder, data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''));
+    });
+    child.stderr?.on('data', data => {
+        event.sender.send('download-progress', decodeChunk(stderrDecoder, data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''));
+    });
+
+    void child.then(async result => {
+        // reject:false 时启动失败也会 resolve，必须显式报告错误并统一完成事件类型。
+        const code = result.exitCode ?? null;
+        if (state.currentChild === child) state.currentChild = null;
+        if ('code' in result && result.code) {
+            // execa 的 shortMessage 包含完整命令及 Cookie，仅公开系统错误码。
+            event.sender.send('download-progress', `>>> ❌ 启动失败 (${String(result.code)})\n请检查 bin 目录下是否有 BBDown.exe\n`);
         }
-        
-        // 任何退出状态（包括手动停止）都执行一次目录扫描，同步已完成的文件 BV
-        // 只有在 code === 0 时，才允许将 URL 对应的 BV 绝对写入历史
+
         await syncDownloadHistory(workDir, rawUrl, code === 0);
 
-        // 下载成功 + 开关开启 + 携带 aid/mediaId → 自动取消收藏
-        if (code === 0 && aid && mediaId && state.unfavAfterDownload) {
-            const result = await removeFromFavFolder(aid, mediaId);
-            if (result.success) {
-                event.sender.send('download-progress', `>>> 🗑️ 已从收藏夹移除: ${rawUrl}\n`);
-            } else {
-                // 取消收藏失败不影响下载流程，只打日志
-                event.sender.send('download-progress', `>>> ⚠️ 取消收藏失败 (${rawUrl}): ${result.message}\n`);
-            }
+        if (code === 0 && aid && mediaId && getSetting('unfavAfterDownload')) {
+            const unfav = await removeFromFavFolder(aid, mediaId);
+            event.sender.send(
+                'download-progress',
+                unfav.success
+                    ? `>>> 🗑️ 已从收藏夹移除: ${rawUrl}\n`
+                    : `>>> ⚠️ 取消收藏失败 (${rawUrl}): ${unfav.message}\n`
+            );
         }
 
         if (code === 0 && isSilent) {
             clipboard.writeText(`Enhancer_Download_Finished||${rawUrl}`);
         }
-        
         event.sender.send('download-complete', code);
-    });
-    
-    child.on('error', (err) => {
-        console.error('启动失败:', err);
-        event.sender.send('download-progress', `>>> ❌ 启动失败: ${err.message}\n请检查 bin 目录下是否有 BBDown.exe`);
+    }).catch(err => {
+        if (state.currentChild === child) state.currentChild = null;
+        // 不输出携带 Cookie 的完整 execa 命令。
+        const message = err.originalMessage ?? err.code ?? (err.command ? '下载执行失败' : err.message);
+        console.error('下载执行失败:', message);
+        event.sender.send('download-progress', `>>> ❌ 下载执行失败: ${message}\n`);
+        event.sender.send('download-complete', null);
     });
   });
 }
 
-// 修复后的历史记录提取：增加 forceAddUrlBv 判定
-async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlBv: boolean = false) {
+/** 同步成功任务和目录中的已完成媒体，取消批量任务也保留已下载条目。 */
+async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlBv = false) {
     try {
-        const syncDir = workDir || './downloads';
-        if (fs.existsSync(syncDir)) {
-            const files = await fs.promises.readdir(syncDir);
-            const historyPath = AppPaths.historyPath;
-            
-            let existingHistory = '';
-            try { existingHistory = await fs.promises.readFile(historyPath, 'utf8'); } catch (e) {}
-            
-            const lines = existingHistory.split('\n').map(s => s.trim()).filter(Boolean);
-            const existingSet = new Set(lines);
-            
-            let changed = false;
-            
-            // 1. 如果任务彻底完成 (code 0)，且输入是单视频 URL，确保将其记入历史
-            if (forceAddUrlBv) {
-                const rawBvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/);
-                if (rawBvidMatch) {
-                    const bvid = rawBvidMatch[0];
-                    if (!existingSet.has(bvid)) {
-                        existingSet.add(bvid);
-                        changed = true;
-                    }
-                }
-            }
-            
-            // 2. 始终扫描目录内的实体文件。这对于“下载收藏夹中途取消”非常有用：
-            // 虽然进程 code 不是 0，但前 5 个已经下完的 mp4 文件名里带有 BV 号，会被扫入历史。
-            for (const file of files) {
-                if (file.match(/\.(mp4|flv|mkv|mp3|m4a)$/i)) {
-                    const bvidMatch = file.match(/BV[a-zA-Z0-9]{10}/);
-                    if (bvidMatch) {
-                        const bvid = bvidMatch[0];
-                        if (!existingSet.has(bvid)) {
-                            existingSet.add(bvid);
-                            changed = true;
-                        }
-                    }
-                }
-            }
-            
-            if (changed) {
-                await fs.promises.writeFile(historyPath, Array.from(existingSet).join('\n') + '\n', 'utf8');
-            }
+        const files = await fg('**/*.{mp4,flv,mkv,mp3,m4a}', {
+            cwd: workDir || './downloads',
+            onlyFiles: true,
+            dot: true,
+            caseSensitiveMatch: false
+        });
+
+        let existing = '';
+        try { existing = await fs.promises.readFile(AppPaths.historyPath, 'utf8'); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+
+        const history = new Set(existing.split(/\r?\n/).map(s => s.trim()).filter(Boolean));
+        const before = history.size;
+
+        // 成功的单视频任务必须入历史；失败任务只采集实体文件。
+        if (forceAddUrlBv) {
+            const bvid = rawUrl.match(/BV[a-zA-Z0-9]{10}/)?.[0];
+            if (bvid) history.add(bvid);
         }
-    } catch (e) {
-        console.error('Sync BV history error:', e);
+
+        // 只读取文件名中的 BV，父目录的 BV 不能代表其全部媒体。
+        for (const file of files) {
+            const bvid = path.basename(file).match(/BV[a-zA-Z0-9]{10}/)?.[0];
+            if (bvid) history.add(bvid);
+        }
+
+        if (history.size !== before) {
+            await fs.promises.writeFile(AppPaths.historyPath, [...history].join('\n') + '\n', 'utf8');
+        }
+    } catch (error) {
+        console.error('Sync BV history error:', error);
     }
 }

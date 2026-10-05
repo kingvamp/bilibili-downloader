@@ -122,8 +122,10 @@ test('停止下载后等待在途任务完成，不启动剩余任务或新流�
 
 test('查询期间停止要等查询返回，且不继续扫描或入队', async () => {
   const gate = createDeferred();
-  const renderer = createRendererHarness([newVideo], undefined, true, { lookup: () => gate.promise });
+  const entered = createDeferred();
+  const renderer = createRendererHarness([newVideo], undefined, true, { lookup: () => { entered.resolve(); return gate.promise; } });
   const running = renderer.run();
+  await entered.promise;
   renderer.hook.handleStop();
   await renderer.run();
   assert.equal(renderer.hook.isWorkflowBusy, true);
@@ -261,7 +263,8 @@ test('停止能关闭重复下载确认并结算等待用户选择的准备阶�
 
 test('定时开关、启动、唤醒和轮询同时触发只发起一次默认收藏夹查询', async () => {
   const gate = createDeferred();
-  const renderer = createRendererHarness([oldVideo], undefined, true, { lookup: () => gate.promise });
+  const entered = createDeferred();
+  const renderer = createRendererHarness([oldVideo], undefined, true, { lookup: () => { entered.resolve(); return gate.promise; } });
   const scheduler = createSchedulerHarness(message => {
     assert.equal(message, null);
     return renderer.scheduled();
@@ -270,6 +273,7 @@ test('定时开关、启动、唤醒和轮询同时触发只发起一次默认�
   scheduler.startup();
   scheduler.wake();
   scheduler.tick();
+  await entered.promise;
   assert.equal(renderer.lookups, 1);
   assert.equal(renderer.scans, 0);
   gate.resolve(123);

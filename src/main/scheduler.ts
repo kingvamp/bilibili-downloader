@@ -1,150 +1,48 @@
-// scheduler.ts
-// 定时任务模块：每小时轮询一次 + 系统唤醒后立即触发，自动下载默认收藏夹中的新视频
-// 关联：state.ts（读写 autoDownloadFav）、渲染进程（收到 scheduled-fav-download 后取得执行权并查询默认收藏夹）
-
+// 定时任务模块：启动、每小时轮询和系统唤醒时通知统一下载流程。
+// 关联：settings.ts 保存开关和触发时间，渲染进程取得执行权后查询默认收藏夹。
 import { ipcMain, powerMonitor } from 'electron';
-import fs from 'fs';
 import { state } from './state';
-import path from 'path';
-import { app } from 'electron';
+import { getSetting, settingsStore } from './settings';
+import { getCookie } from './auth';
 
-interface SchedulerConfig {
-  autoDownloadFav: boolean;
-  lastTriggeredTime: number; // 毫秒时间戳
-  unfavAfterDownload?: boolean; // 下载完成后是否自动从收藏夹移除视频
-}
-
-/** 获取定时配置文件路径 */
-function getSchedulerConfigPath(): string {
-  return path.join(app.getPath('userData'), 'scheduler.json');
-}
-
-/** 从磁盘加载每日下载配置 */
-function loadConfig(): SchedulerConfig {
-  try {
-    const configPath = getSchedulerConfigPath();
-    if (fs.existsSync(configPath)) {
-      const raw = fs.readFileSync(configPath, 'utf-8').trim();
-      const parsed = JSON.parse(raw);
-      return {
-        autoDownloadFav: typeof parsed.autoDownloadFav === 'boolean' ? parsed.autoDownloadFav : false,
-        lastTriggeredTime: typeof parsed.lastTriggeredTime === 'number' ? parsed.lastTriggeredTime : 0,
-        unfavAfterDownload: typeof parsed.unfavAfterDownload === 'boolean' ? parsed.unfavAfterDownload : false,
-      };
-    }
-  } catch (e) {
-    console.error('[scheduler] 加载定时配置失败:', e);
-  }
-  return { autoDownloadFav: false, lastTriggeredTime: 0, unfavAfterDownload: false };
-}
-
-/** 将配置写入磁盘 */
-function saveConfig(config: SchedulerConfig): void {
-  try {
-    const configPath = getSchedulerConfigPath();
-    fs.writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('[scheduler] 保存定时配置失败:', e);
-  }
-}
-
-// 内存中记录最后一次提示未登录的时间，防止日志刷屏
+// 内存中记录最后一次提示未登录的时间，防止日志刷屏。
 let lastWarnedNoLoginTime = 0;
 
-/** 检查开关状态并发送自动下载触发通知，不独立启动网络查询。 */
+/** 检查开关并发送意图，收藏夹网络查询由统一流程持有执行权后发起。 */
 function checkAndTriggerAutoDownload(): void {
-  if (!state.autoDownloadFav) return;
-
-  const config = loadConfig();
-  const now = Date.now();
-
+  if (!getSetting('autoDownloadFav')) return;
   if (!state.mainWindow) {
     console.warn('[scheduler] 窗口未就绪，跳过本次自动下载');
     return;
   }
-
-  // 如果未登录，不触发也不更新 lastTriggeredTime（等待登录后再触发）
-  // 但为了给用户提示，每过 1 小时最多提示一次
-  if (!state.sessionCookie) {
+  const now = Date.now();
+  // 未登录时不触发也不更新触发时间，每小时最多提示一次。
+  if (!getCookie()) {
     if (now - lastWarnedNoLoginTime >= 60 * 60 * 1000) {
       lastWarnedNoLoginTime = now;
-      state.mainWindow.webContents.send(
-        'scheduled-fav-download',
-        '⚠️ 每日自动下载触发，但检测到当前未登录，已跳过。请登录后等待下一次轮询。'
-      );
+      state.mainWindow.webContents.send('scheduled-fav-download',
+        '⚠️ 每日自动下载触发，但检测到当前未登录，已跳过。请登录后等待下一次轮询。');
     }
     return;
   }
-
-  // 定时器只发出意图；收藏夹查询必须由渲染进程取得流程执行权后发起。
-  console.log('[scheduler] ⏰ 通知渲染进程尝试自动下载默认收藏夹');
   state.mainWindow.webContents.send('scheduled-fav-download', null);
-
-  // 发出触发通知后，更新上次触发时间戳并保存
-  config.lastTriggeredTime = now;
-  saveConfig(config);
+  // 发出通知后记录时间；设置存储错误必须可见。
+  try {
+    settingsStore.set('lastTriggeredTime', now);
+  } catch (error) {
+    console.error('[scheduler] 保存触发时间失败:', error);
+  }
 }
 
-/** 注册定时调度器 */
+/** 注册查询、开关、唤醒、启动和轮询触发，共用同一个设置源。 */
 export function setupScheduler(): void {
-  // 启动时从磁盘恢复开关状态
-  const config = loadConfig();
-  state.autoDownloadFav = config.autoDownloadFav;
-  state.unfavAfterDownload = config.unfavAfterDownload || false;
-  console.log(`[scheduler] 已加载定时配置: 每日自动下载开关="${state.autoDownloadFav}"，下载后自动取消收藏开关="${state.unfavAfterDownload}"，上次触发时间="${config.lastTriggeredTime ? new Date(config.lastTriggeredTime).toLocaleString() : '无记录'}"`);
-
-  // IPC：渲染进程查询上次触发的时间戳
-  ipcMain.handle('get-last-triggered-time', () => {
-    const cfg = loadConfig();
-    return cfg.lastTriggeredTime;
+  ipcMain.handle('get-last-triggered-time', () => settingsStore.get('lastTriggeredTime'));
+  settingsStore.onDidChange('autoDownloadFav', (enabled, previous) => {
+    // 重新开启立即检查，不独立建立下载流程。
+    if (enabled && !previous) checkAndTriggerAutoDownload();
   });
-
-  // IPC：渲染进程查询自动下载开关状态
-  ipcMain.handle('get-auto-download-fav', () => {
-    return state.autoDownloadFav;
-  });
-
-  // IPC：渲染进程更新自动下载开关状态
-  ipcMain.on('set-auto-download-fav', (_event, enabled: boolean) => {
-    state.autoDownloadFav = enabled;
-    const cfg = loadConfig();
-    cfg.autoDownloadFav = enabled;
-    // 如果关闭后又重新开启，为了响应可能积压的任务，我们将 lastTriggeredTime 重置为 0，以便立即触发一次
-    if (enabled) {
-      cfg.lastTriggeredTime = 0;
-    }
-    saveConfig(cfg);
-    console.log(`[scheduler] 每日自动下载开关已更新为: "${enabled}"`);
-    
-    if (enabled) {
-      // 重新开启时立即做一次检查
-      checkAndTriggerAutoDownload();
-    }
-  });
-
-  // IPC：渲染进程更新下载后自动取消收藏状态
-  ipcMain.on('set-unfav-after-download', (_event, enabled: boolean) => {
-    state.unfavAfterDownload = enabled;
-    const cfg = loadConfig();
-    cfg.unfavAfterDownload = enabled;
-    saveConfig(cfg);
-    console.log(`[scheduler] 下载后自动取消收藏开关已更新为: "${enabled}"`);
-  });
-
-  // 监听系统从睡眠/休眠中恢复：唤醒后立即触发一次检查
-  powerMonitor.on('resume', () => {
-    console.log('[scheduler] 系统从睡眠中唤醒，立即触发自动下载检查...');
-    checkAndTriggerAutoDownload();
-  });
-
-  // 启动后延迟 10 秒进行首次检查（确保渲染进程完成初始化与 Cookie 加载）
-  setTimeout(() => {
-    console.log('[scheduler] 执行启动后首次自动下载检查...');
-    checkAndTriggerAutoDownload();
-  }, 10 * 1000);
-
-  // 每 1 小时轮询一次（覆盖电脑持续开机的场景）
-  setInterval(() => {
-    checkAndTriggerAutoDownload();
-  }, 60 * 60 * 1000);
+  powerMonitor.on('resume', checkAndTriggerAutoDownload);
+  // 启动延迟用于等待渲染进程注册监听。
+  setTimeout(checkAndTriggerAutoDownload, 10_000);
+  setInterval(checkAndTriggerAutoDownload, 60 * 60 * 1000);
 }

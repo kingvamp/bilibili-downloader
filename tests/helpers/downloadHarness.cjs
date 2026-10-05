@@ -36,6 +36,9 @@ function createMainHarness(options = {}) {
   let inFlight = 0;
   let maxInFlight = 0;
   let child;
+  let resolveChild;
+  let finished;
+  let processOptions;
   const state = {
     currentChild: null,
     unfavAfterDownload: options.enabled ?? true,
@@ -60,6 +63,20 @@ function createMainHarness(options = {}) {
   };
   const dependencies = {
     electron, path, fs: fileMock, qrcode: {},
+    'fast-glob': async (_pattern, scanOptions) => {
+      if (scanOptions.suppressErrors) throw new Error('不允许隐藏扫描错误');
+      if (options.scanError) throw options.scanError;
+      return options.files ?? [];
+    },
+    './auth': {
+      getCookie: () => state.sessionCookie,
+      setCookie: cookie => { state.sessionCookie = cookie; },
+      clearCookie: () => { state.sessionCookie = ''; }
+    },
+    './settings': {
+      getSettings: () => ({ downloadDir: options.downloadDir ?? 'mock-downloads', dlSub: false, multiThread: false }),
+      getSetting: () => state.unfavAfterDownload
+    },
     axios: {
       post: async (_url, body) => {
         requests.push(new URLSearchParams(body));
@@ -78,9 +95,16 @@ function createMainHarness(options = {}) {
   api.setupApi();
   loadSource('src/main/downloader.ts', {
     ...dependencies, './api': api,
-    child_process: {
-      spawn: () => {
-        child = new EventEmitter();
+    'fast-glob': options.glob ?? (async (_pattern, scanOptions) => {
+      assert.equal(scanOptions.suppressErrors, undefined);
+      assert.equal(scanOptions.caseSensitiveMatch, false);
+      if (options.scanError) throw options.scanError;
+      return options.files ?? [];
+    }),
+    execa: {
+      execa: (_path, _args, spawnOptions) => {
+        processOptions = spawnOptions;
+        child = new Promise(resolve => { resolveChild = resolve; });
         child.stdout = new EventEmitter();
         child.stderr = new EventEmitter();
         child.kill = () => {};
@@ -91,16 +115,23 @@ function createMainHarness(options = {}) {
 
   // 运行单视频下载的完整退出回调，涵盖历史写入、取消收藏和完成通知。
   async function download(exitCode = 0, aid = 170001, folderId = 123) {
+    finished = createDeferred();
     handlers.get('start-download')(
-      { sender: { send: (channel, value) => messages.push({ channel, value }) } },
-      'BV17x411w7KC', false, false, 'mock-downloads', false, false, aid, folderId
+      { sender: { send: (channel, value) => {
+        messages.push({ channel, value });
+        if (channel === 'download-complete') finished.resolve();
+      } } },
+      'BV17x411w7KC', false, false, aid, folderId
     );
-    await child.listeners('close')[0](exitCode);
+    options.beforeExit?.(child);
+    resolveChild(options.processResult ?? { exitCode });
+    await finished.promise;
   }
 
   return {
     download, requests, messages,
     get history() { return history; },
+    get processOptions() { return processOptions; },
     get maxInFlight() { return maxInFlight; },
     remove: (aid, folderId) => handlers.get('remove-from-fav-folder')({}, aid, folderId),
     hasLog: text => messages.some(item => typeof item.value === 'string' && item.value.includes(text))
@@ -138,6 +169,7 @@ function createRendererHarness(results, remove = async () => ({ success: true })
   };
   const globals = {
     window: { confirm: () => true, api: {
+      getSettings: async () => options.settings ? options.settings() : ({ unfavAfterDownload: enabled }),
       getDefaultFavId: async () => {
         lookups++;
         return options.lookup ? options.lookup() : 123;
@@ -217,17 +249,25 @@ function createSchedulerHarness(trigger) {
   const timers = [];
   const intervals = [];
   const pending = [];
-  let saved = '';
+  let enabled = false;
+  let lastTriggeredTime = 0;
+  let settingListener;
   const scheduler = loadSource('src/main/scheduler.ts', {
     electron: {
       app: { getPath: () => 'mock-user' },
       ipcMain: { on: (name, callback) => handlers.set(name, callback), handle: (name, callback) => handlers.set(name, callback) },
       powerMonitor: { on: (name, callback) => powerEvents.set(name, callback) }
     },
-    path,
-    fs: { existsSync: () => !!saved, readFileSync: () => saved, writeFileSync: (_path, content) => { saved = content; } },
+    './settings': {
+      getSetting: () => enabled,
+      settingsStore: {
+        onDidChange: (_key, listener) => { settingListener = listener; },
+        set: (_key, value) => { lastTriggeredTime = value; },
+        get: () => lastTriggeredTime
+      }
+    },
+    './auth': { getCookie: () => 'bili_jct=mock;' },
     './state': { state: {
-      autoDownloadFav: false, sessionCookie: 'bili_jct=mock;',
       mainWindow: { webContents: { send: (channel, message) => {
         assert.equal(channel, 'scheduled-fav-download');
         pending.push(trigger(message));
@@ -241,7 +281,7 @@ function createSchedulerHarness(trigger) {
   });
   scheduler.setupScheduler();
   return {
-    enable: () => handlers.get('set-auto-download-fav')({}, true),
+    enable: () => { const previous = enabled; enabled = true; settingListener(true, previous); },
     startup: () => timers[0](),
     wake: () => powerEvents.get('resume')(),
     tick: () => intervals[0](),
@@ -249,4 +289,4 @@ function createSchedulerHarness(trigger) {
   };
 }
 
-module.exports = { createMainHarness, createRendererHarness, createDeferred, createSchedulerHarness };
+module.exports = { loadSource, createMainHarness, createRendererHarness, createDeferred, createSchedulerHarness };

@@ -19,7 +19,7 @@ function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
   // 1. Settings Hook
-  const { settings, saveSettings } = useSettings((msg) => {
+  const { settings, saveSettings, isReady, isSaving } = useSettings((msg) => {
     // This is a bootstrap appendLog for settings toggle
     // We'll use the one from useDownload for most things
   });
@@ -151,12 +151,12 @@ function App() {
         />
       )}
 
-      {isSettingsModalOpen && (
+      {isSettingsModalOpen && isReady && (
         <SettingsModal
           initialSettings={settings}
-          onSave={(newSettings) => {
-            saveSettings(newSettings);
-            setIsSettingsModalOpen(false);
+          isSaving={isSaving}
+          onSave={async (newSettings) => {
+            if (await saveSettings(newSettings)) setIsSettingsModalOpen(false);
           }}
           onClose={() => setIsSettingsModalOpen(false)}
         />

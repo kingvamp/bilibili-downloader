@@ -4,7 +4,10 @@ import axios from 'axios';
 import QRCode from 'qrcode';
 import fs from 'fs';
 import path from 'path';
+import fg from 'fast-glob';
 import { state, AppPaths } from './state';
+import { clearCookie, getCookie, setCookie } from './auth';
+
 
 // 下载完成与 IPC 清理共用一个取消收藏队列，任何时刻只发送一个请求。
 let removalQueue: Promise<void> = Promise.resolve();
@@ -18,14 +21,14 @@ export function removeFromFavFolder(aid: number, folderId: number): Promise<{ su
 
 /** 从指定收藏夹取消收藏，并统一校验 B 站业务结果和登录凭据。 */
 async function requestRemoval(aid: number, folderId: number): Promise<{ success: boolean; message?: string }> {
-  if (!state.sessionCookie) return { success: false, message: '请先登录' };
+  if (!getCookie()) return { success: false, message: '请先登录' };
   try {
-    const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
+    const csrf = getCookie().match(/bili_jct=([^;]+)/)?.[1];
     if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
 
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-      'Cookie': state.sessionCookie,
+      'Cookie': getCookie(),
       'Content-Type': 'application/x-www-form-urlencoded'
     };
 
@@ -49,15 +52,12 @@ async function requestRemoval(aid: number, folderId: number): Promise<{ success:
 
 /** 注册主进程 API，并恢复本地登录凭据。 */
 export function setupApi() {
-  loadCookie();
-
-
   ipcMain.handle('get-user-info', async () => {
-    if (!state.sessionCookie) return { isLogin: false };
+    if (!getCookie()) return { isLogin: false };
     try {
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie
+        'Cookie': getCookie()
       };
       const res = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
       if (res.data.code === 0 && res.data.data.isLogin) {
@@ -70,10 +70,7 @@ export function setupApi() {
       }
       
       // Cookie 已过期或被踢下线，自动清理
-      state.sessionCookie = '';
-      if (fs.existsSync(AppPaths.cookiePath)) {
-        fs.unlinkSync(AppPaths.cookiePath);
-      }
+      clearCookie();
       return { isLogin: false };
     } catch (e: any) { 
       return { isLogin: false, error: e.message }; 
@@ -82,21 +79,16 @@ export function setupApi() {
 
   // 手动退出登录
   ipcMain.handle('logout', async () => {
-    state.sessionCookie = '';
-    try {
-      if (fs.existsSync(AppPaths.cookiePath)) {
-        fs.unlinkSync(AppPaths.cookiePath);
-      }
-    } catch (e) {}
+    clearCookie();
     return { success: true };
   });
 
   ipcMain.handle('get-default-fav-id', async () => {
-    if (!state.sessionCookie) return null;
+    if (!getCookie()) return null;
     try {
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie
+        'Cookie': getCookie()
       };
       const navRes = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
       if (navRes.data.code !== 0 || !navRes.data.data.isLogin) return null;
@@ -111,14 +103,14 @@ export function setupApi() {
   });
 
   ipcMain.handle('collect-to-fav-folder', async (event, aid: number, folderId: number) => {
-    if (!state.sessionCookie) return { success: false, message: '请先登录' };
+    if (!getCookie()) return { success: false, message: '请先登录' };
     try {
-      const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
+      const csrf = getCookie().match(/bili_jct=([^;]+)/)?.[1];
       if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
 
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie,
+        'Cookie': getCookie(),
         'Content-Type': 'application/x-www-form-urlencoded'
       };
 
@@ -160,8 +152,7 @@ export function setupApi() {
       if (res.data.data.code === 0) {
         const cookies = res.headers['set-cookie'];
         if (cookies) {
-          state.sessionCookie = cookies.map((c: string) => c.split(';')[0]).join('; ');
-          fs.writeFileSync(AppPaths.cookiePath, state.sessionCookie);
+          setCookie(cookies.map((c: string) => c.split(';')[0]).join('; '));
           return { status: 'success' };
         }
       } 
@@ -183,36 +174,36 @@ export function setupApi() {
     const targetDir = filePaths[0];
     const foundBvids = new Set<string>();
 
-    const scanDir = (dir: string) => {
-      const files = fs.readdirSync(dir);
-      for (const file of files) {
-        const fullPath = path.join(dir, file);
-        const stats = fs.statSync(fullPath);
-        if (stats.isDirectory()) {
-          scanDir(fullPath);
-        } else if (stats.isFile()) {
-          // 匹配视频和音频常用后缀
-          if (/\.(mp4|flv|mkv|mp3|m4a|xml|ass)$/i.test(file)) {
-            const matchBv = file.match(/BV[a-zA-Z0-9]{10}/);
-            if (matchBv) {
-              foundBvids.add(matchBv[0]);
-            } else {
-              const matchAv = file.match(/av(\d+)/i);
-              if (matchAv) {
-                 try {
-                   const { avToBv } = require('../renderer/utils/bilibili');
-                   const bvid = avToBv(matchAv[1]);
-                   foundBvids.add(bvid);
-                 } catch (e) { console.error('avToBv convert error:', e); }
-              }
-            }
+    try {
+      const mediaFiles = await fg(
+        ['**/*.{mp4,flv,mkv,mp3,m4a,xml,ass}'],
+        {
+          cwd: targetDir,
+          onlyFiles: true,
+          caseSensitiveMatch: false,
+          absolute: false,
+          dot: true
+        }
+      );
+
+      for (const relativePath of mediaFiles) {
+        const file = path.basename(relativePath);
+        const matchBv = file.match(/BV[a-zA-Z0-9]{10}/);
+        if (matchBv) {
+          foundBvids.add(matchBv[0]);
+          continue;
+        }
+
+        const matchAv = file.match(/av(\d+)/i);
+        if (matchAv) {
+          try {
+            const { avToBv } = require('../renderer/utils/bilibili');
+            foundBvids.add(avToBv(matchAv[1]));
+          } catch (e) {
+            console.error('avToBv convert error:', e);
           }
         }
       }
-    };
-
-    try {
-      scanDir(targetDir);
       
       // 读取现有历史并合并
       let existingHistory = '';
@@ -252,12 +243,4 @@ export function setupApi() {
     }
   });
 
-}
-
-function loadCookie(): void {
-  try {
-    if (fs.existsSync(AppPaths.cookiePath)) {
-      state.sessionCookie = fs.readFileSync(AppPaths.cookiePath, 'utf-8').trim();
-    }
-  } catch (e) { console.error(e); }
 }
