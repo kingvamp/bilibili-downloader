@@ -7,12 +7,14 @@ import { Settings } from '../../types';
 
 interface SettingsModalProps {
     initialSettings: Settings;
-    onSave: (s: Settings) => void;
+    onSave: (s: Settings) => Promise<void>;
+    isSaving: boolean;
     onClose: () => void;
 }
 
 export function SettingsModal({
     initialSettings,
+    isSaving,
     onSave,
     onClose,
 }: SettingsModalProps) {
@@ -233,8 +235,8 @@ export function SettingsModal({
                 </div>{/* settings-scroll-area 结束 */}
 
                 <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center' }}>
-                    <button className="modal-btn btn-save" onClick={() => onSave(tempSettings)} style={{ width: '100%', padding: '12px 0' }}>
-                        保存并应用配置
+                    <button className="modal-btn btn-save" disabled={isSaving} onClick={() => void onSave(tempSettings)} style={{ width: '100%', padding: '12px 0' }}>
+                        {isSaving ? '正在保存配置...' : '保存并应用配置'}
                     </button>
                 </div>
             </div>

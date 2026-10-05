@@ -7,26 +7,23 @@ import { execa } from 'execa';
 import fg from 'fast-glob';
 import { state, AppPaths } from './state';
 import { removeFromFavFolder } from './api';
-import { shouldUnfavAfterDownload } from './scheduler';
-import { getSettings } from './settings';
+import { getSetting, getSettings } from './settings';
 import { getCookie } from './auth';
 
+/** 按流解码 GBK，保留跨数据块的多字节字符。 */
 function decodeChunk(decoder: TextDecoder, data: Buffer | string): string {
   return typeof data === 'string' ? data : decoder.decode(data, { stream: true });
 }
 
+/** 获取 BBDown 元数据，启动失败或超时交给调用方明确记录。 */
 async function inspectWithBBDown(downloaderPath: string, url: string): Promise<string> {
-  try {
-    const result = await execa(downloaderPath, [url, '--only-show-info'], {
-      reject: false,
-      timeout: 15000,
-      all: true,
-      encoding: null
-    });
-    return new TextDecoder('gbk').decode(result.all ?? new Uint8Array());
-  } catch {
-    return '';
-  }
+  const result = await execa(downloaderPath, [url, '--only-show-info'], {
+    timeout: 15000,
+    all: true,
+    encoding: null,
+    windowsHide: true
+  });
+  return new TextDecoder('gbk').decode(result.all ?? new Uint8Array());
 }
 
 /** 注册下载控制、历史检查和队列完成通知。 */
@@ -232,24 +229,31 @@ export function setupDownloader() {
 
     state.currentChild?.kill();
 
-    const child = execa(downloaderPath, args, { reject: false });
-    state.currentChild = child as any;
-    const decoder = new TextDecoder('gbk');
+    // 输出由进度事件实时消费，禁用 execa 缓冲以免长任务达到输出上限被中止。
+    const child = execa(downloaderPath, args, { reject: false, buffer: false, windowsHide: true });
+    state.currentChild = child;
+    const stdoutDecoder = new TextDecoder('gbk');
+    const stderrDecoder = new TextDecoder('gbk');
 
     child.stdout?.on('data', data => {
-        event.sender.send('download-progress', decodeChunk(decoder, data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''));
+        event.sender.send('download-progress', decodeChunk(stdoutDecoder, data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''));
     });
     child.stderr?.on('data', data => {
-        event.sender.send('download-progress', decodeChunk(decoder, data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''));
+        event.sender.send('download-progress', decodeChunk(stderrDecoder, data).replace(/\x1B\[[0-9;]*[a-zA-Z]/g, ''));
     });
 
     void child.then(async result => {
-        const code = result.exitCode;
-        if (state.currentChild === (child as any)) state.currentChild = null;
+        // reject:false 时启动失败也会 resolve，必须显式报告错误并统一完成事件类型。
+        const code = result.exitCode ?? null;
+        if (state.currentChild === child) state.currentChild = null;
+        if ('code' in result && result.code) {
+            // execa 的 shortMessage 包含完整命令及 Cookie，仅公开系统错误码。
+            event.sender.send('download-progress', `>>> ❌ 启动失败 (${String(result.code)})\n请检查 bin 目录下是否有 BBDown.exe\n`);
+        }
 
         await syncDownloadHistory(workDir, rawUrl, code === 0);
 
-        if (code === 0 && aid && mediaId && shouldUnfavAfterDownload()) {
+        if (code === 0 && aid && mediaId && getSetting('unfavAfterDownload')) {
             const unfav = await removeFromFavFolder(aid, mediaId);
             event.sender.send(
                 'download-progress',
@@ -264,35 +268,42 @@ export function setupDownloader() {
         }
         event.sender.send('download-complete', code);
     }).catch(err => {
-        if (state.currentChild === (child as any)) state.currentChild = null;
-        console.error('启动失败:', err);
-        event.sender.send('download-progress', `>>> ❌ 启动失败: ${err.message}\n请检查 bin 目录下是否有 BBDown.exe`);
+        if (state.currentChild === child) state.currentChild = null;
+        // 不输出携带 Cookie 的完整 execa 命令。
+        const message = err.originalMessage ?? err.code ?? (err.command ? '下载执行失败' : err.message);
+        console.error('下载执行失败:', message);
+        event.sender.send('download-progress', `>>> ❌ 下载执行失败: ${message}\n`);
         event.sender.send('download-complete', null);
     });
   });
 }
 
+/** 同步成功任务和目录中的已完成媒体，取消批量任务也保留已下载条目。 */
 async function syncDownloadHistory(workDir: string, rawUrl: string, forceAddUrlBv = false) {
     try {
         const files = await fg('**/*.{mp4,flv,mkv,mp3,m4a}', {
             cwd: workDir || './downloads',
             onlyFiles: true,
-            suppressErrors: true
+            dot: true,
+            caseSensitiveMatch: false
         });
 
         let existing = '';
-        try { existing = await fs.promises.readFile(AppPaths.historyPath, 'utf8'); } catch {}
+        try { existing = await fs.promises.readFile(AppPaths.historyPath, 'utf8'); }
+        catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
 
         const history = new Set(existing.split(/\r?\n/).map(s => s.trim()).filter(Boolean));
         const before = history.size;
 
+        // 成功的单视频任务必须入历史；失败任务只采集实体文件。
         if (forceAddUrlBv) {
             const bvid = rawUrl.match(/BV[a-zA-Z0-9]{10}/)?.[0];
             if (bvid) history.add(bvid);
         }
 
+        // 只读取文件名中的 BV，父目录的 BV 不能代表其全部媒体。
         for (const file of files) {
-            const bvid = file.match(/BV[a-zA-Z0-9]{10}/)?.[0];
+            const bvid = path.basename(file).match(/BV[a-zA-Z0-9]{10}/)?.[0];
             if (bvid) history.add(bvid);
         }
 

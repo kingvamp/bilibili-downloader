@@ -1,11 +1,13 @@
 {
   "name": "bilibili-downloader",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Bilibili Downloader by Enhancer",
   "author": "kingvamp",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
+    "test": "node --test tests/*.test.cjs",
+    "test:packaged": "node tests/run-packaged-smoke.cjs",
     "build": "tsc && vite build",
     "start": "electron .",
     "watch": "vite",

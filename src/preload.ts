@@ -11,9 +11,9 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.removeAllListeners('download-progress');
     ipcRenderer.on('download-progress', (_event: IpcRendererEvent, value: string) => callback(value));
   },
-  onComplete: (callback: (code: number) => void) => {
+  onComplete: (callback: (code: number | null) => void) => {
     ipcRenderer.removeAllListeners('download-complete');
-    ipcRenderer.on('download-complete', (_event: IpcRendererEvent, value: number) => callback(value));
+    ipcRenderer.on('download-complete', (_event: IpcRendererEvent, value: number | null) => callback(value));
   },
   openExternal: (url: string) => ipcRenderer.send('open-external', url),
   
@@ -38,9 +38,9 @@ contextBridge.exposeInMainWorld('api', {
 
   // 【新增】每日自动下载配置
   getLastTriggeredTime: () => ipcRenderer.invoke('get-last-triggered-time'),
-  onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => {
+  onScheduledFavDownload: (callback: (message: string | null) => void) => {
     ipcRenderer.removeAllListeners('scheduled-fav-download');
-    ipcRenderer.on('scheduled-fav-download', (_event: IpcRendererEvent, favId: string | null, message: string | null) => callback(favId, message));
+    ipcRenderer.on('scheduled-fav-download', (_event: IpcRendererEvent, message: string | null) => callback(message));
   },
   
   onClipboardMatch: (callback: (url: string) => void) => {
