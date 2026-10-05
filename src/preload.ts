@@ -2,8 +2,8 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
-  startDownload: (url: string, isBatch: boolean = false, dlSub: boolean = false, downloadDir: string = '', isSilent: boolean = false, isMultiThread: boolean = false, aid?: number, mediaId?: number) => 
-      ipcRenderer.send('start-download', url, isBatch, dlSub, downloadDir, isSilent, isMultiThread, aid, mediaId),
+  startDownload: (url: string, isBatch: boolean = false, isSilent: boolean = false, aid?: number, mediaId?: number) =>
+      ipcRenderer.send('start-download', url, isBatch, isSilent, aid, mediaId),
   checkDownloadHistory: (url: string) => ipcRenderer.invoke('check-download-history', url),
   stopDownload: () => ipcRenderer.send('stop-download'),
   
@@ -30,18 +30,14 @@ contextBridge.exposeInMainWorld('api', {
   selectFolder: () => ipcRenderer.invoke('select-folder'),
   scanFolderForHistory: () => ipcRenderer.invoke('scan-folder-for-history'),
   getHistoryCount: () => ipcRenderer.invoke('get-history-count'),
-  setClipboardMonitor: (state: boolean) => ipcRenderer.send('set-clipboard-monitor', state),
-  setCloseToTray: (state: boolean) => ipcRenderer.send('set-close-to-tray', state),
-  setNotifyState: (state: boolean) => ipcRenderer.send('set-notify-state', state),
-  setSoundState: (state: boolean) => ipcRenderer.send('set-sound-state', state),
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  saveSettings: (settings: unknown) => ipcRenderer.invoke('save-settings', settings),
   
   // 【新增】通知后端整个队列已全部完成
   notifyQueueDone: () => ipcRenderer.send('queue-finished'),
 
   // 【新增】每日自动下载配置
   getLastTriggeredTime: () => ipcRenderer.invoke('get-last-triggered-time'),
-  setAutoDownloadFav: (enabled: boolean) => ipcRenderer.send('set-auto-download-fav', enabled),
-  setUnfavAfterDownload: (enabled: boolean) => ipcRenderer.send('set-unfav-after-download', enabled),
   onScheduledFavDownload: (callback: (favId: string | null, message: string | null) => void) => {
     ipcRenderer.removeAllListeners('scheduled-fav-download');
     ipcRenderer.on('scheduled-fav-download', (_event: IpcRendererEvent, favId: string | null, message: string | null) => callback(favId, message));
