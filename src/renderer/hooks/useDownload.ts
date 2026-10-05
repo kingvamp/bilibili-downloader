@@ -438,10 +438,7 @@ export function useDownload(settings: Settings) {
       window.api.startDownload(
         inputUrl,
         isBatch,
-        settings.dlSub,
-        settings.downloadDir,
         taskToStart.isSilent,
-        settings.multiThread,
         taskToStart.aid,
         taskToStart.mediaId
       );
