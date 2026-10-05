@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import axios from 'axios';
 import { execa } from 'execa';
+import fg from 'fast-glob';
 import { state, AppPaths } from './state';
 import { removeFromFavFolder } from './api';
 import { shouldUnfavAfterDownload } from './scheduler';
@@ -14,28 +15,17 @@ function decodeChunk(decoder: TextDecoder, data: Buffer | string): string {
 }
 
 async function inspectWithBBDown(downloaderPath: string, url: string): Promise<string> {
-  const decoder = new TextDecoder('gbk');
-  let output = '';
-
-  const subprocess = execa(downloaderPath, [url, '--only-show-info'], {
-    reject: false,
-    timeout: 15000
-  });
-
-  subprocess.stdout?.on('data', data => {
-    output += decodeChunk(decoder, data);
-  });
-  subprocess.stderr?.on('data', data => {
-    output += decodeChunk(decoder, data);
-  });
-
   try {
-    await subprocess;
+    const result = await execa(downloaderPath, [url, '--only-show-info'], {
+      reject: false,
+      timeout: 15000,
+      all: true,
+      encoding: null
+    });
+    return new TextDecoder('gbk').decode(result.all ?? new Uint8Array());
   } catch {
-    // 超时或启动失败时保留已经捕获到的输出，供 BV 号兜底识别。
+    return '';
   }
-
-  return output;
 }
 
 /** 注册下载控制、历史检查和队列完成通知。 */
@@ -299,46 +289,35 @@ export function setupDownloader() {
 async function syncDownloadHistory(
   workDir: string,
   rawUrl: string,
-  forceAddUrlBv: boolean = false
+  forceAddUrlBv = false
 ) {
   try {
-    const syncDir = workDir || './downloads';
-    if (!fs.existsSync(syncDir)) return;
+    const files = await fg('**/*.{mp4,flv,mkv,mp3,m4a}', {
+      cwd: workDir || './downloads',
+      onlyFiles: true,
+      suppressErrors: true
+    });
 
-    const files = await fs.promises.readdir(syncDir);
-    const historyPath = AppPaths.historyPath;
+    let existing = '';
+    try { existing = await fs.promises.readFile(AppPaths.historyPath, 'utf8'); } catch {}
 
-    let existingHistory = '';
-    try { existingHistory = await fs.promises.readFile(historyPath, 'utf8'); } catch {}
-
-    const lines = existingHistory.split('\n').map(s => s.trim()).filter(Boolean);
-    const existingSet = new Set(lines);
-    let changed = false;
+    const history = new Set(existing.split(/\r?\n/).map(s => s.trim()).filter(Boolean));
+    const before = history.size;
 
     if (forceAddUrlBv) {
-      const rawBvidMatch = rawUrl.match(/BV[a-zA-Z0-9]{10}/);
-      if (rawBvidMatch) {
-        const bvid = rawBvidMatch[0];
-        if (!existingSet.has(bvid)) {
-          existingSet.add(bvid);
-          changed = true;
-        }
-      }
+      const bvid = rawUrl.match(/BV[a-zA-Z0-9]{10}/)?.[0];
+      if (bvid) history.add(bvid);
     }
 
     for (const file of files) {
-      if (!file.match(/\.(mp4|flv|mkv|mp3|m4a)$/i)) continue;
-      const bvidMatch = file.match(/BV[a-zA-Z0-9]{10}/);
-      if (bvidMatch && !existingSet.has(bvidMatch[0])) {
-        existingSet.add(bvidMatch[0]);
-        changed = true;
-      }
+      const bvid = file.match(/BV[a-zA-Z0-9]{10}/)?.[0];
+      if (bvid) history.add(bvid);
     }
 
-    if (changed) {
-      await fs.promises.writeFile(historyPath, Array.from(existingSet).join('\n') + '\n', 'utf8');
+    if (history.size !== before) {
+      await fs.promises.writeFile(AppPaths.historyPath, [...history].join('\n') + '\n', 'utf8');
     }
-  } catch (e) {
-    console.error('Sync BV history error:', e);
+  } catch (error) {
+    console.error('Sync BV history error:', error);
   }
 }
