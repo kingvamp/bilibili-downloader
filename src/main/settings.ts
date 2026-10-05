@@ -1,3 +1,4 @@
+import { ipcMain } from 'electron';
 import Store from 'electron-store';
 import { DEFAULT_SETTINGS, type Settings } from '../shared/settings';
 
@@ -24,4 +25,13 @@ export function saveSettings(settings: Settings): void {
 
 export function getSetting<K extends keyof Settings>(key: K): Settings[K] {
   return settingsStore.get(key);
+}
+
+
+export function setupSettings(): void {
+  ipcMain.handle('get-settings', () => getSettings());
+  ipcMain.handle('save-settings', (_event, next: Settings) => {
+    saveSettings(next);
+    return { success: true };
+  });
 }
