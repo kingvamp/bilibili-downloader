@@ -5,7 +5,6 @@ import path from 'path';
 export interface AppState {
   mainWindow: BrowserWindow | null;
   tray: Tray | null;
-  sessionCookie: string;
   lastClipboardText: string;
   isQuitting: boolean;
   currentChild: ChildProcess | null;
@@ -14,7 +13,6 @@ export interface AppState {
 export const state: AppState = {
   mainWindow: null,
   tray: null,
-  sessionCookie: '',
   lastClipboardText: '',
   isQuitting: false,
   currentChild: null,
