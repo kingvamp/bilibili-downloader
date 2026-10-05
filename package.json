@@ -13,7 +13,6 @@
     "dist": "npm run build && electron-builder"
   },
   "devDependencies": {
-    "@types/electron": "^1.6.10",
     "@types/node": "^20.11.0",
     "@types/qrcode": "^1.5.5",
     "@types/react": "^19.2.14",
