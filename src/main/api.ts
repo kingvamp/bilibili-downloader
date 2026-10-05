@@ -5,24 +5,20 @@ import QRCode from 'qrcode';
 import fs from 'fs';
 import path from 'path';
 import fg from 'fast-glob';
-import Store from 'electron-store';
 import { state, AppPaths } from './state';
+import { clearCookie, getCookie, setCookie } from './auth';
 
-const authStore = new Store<{ sessionCookie: string }>({
-  name: 'auth',
-  defaults: { sessionCookie: '' }
-});
 
 /** 从指定收藏夹取消收藏，并统一校验 B 站业务结果和登录凭据。 */
 export async function removeFromFavFolder(aid: number, folderId: number): Promise<{ success: boolean; message?: string }> {
-  if (!state.sessionCookie) return { success: false, message: '请先登录' };
+  if (!getCookie()) return { success: false, message: '请先登录' };
   try {
-    const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
+    const csrf = getCookie().match(/bili_jct=([^;]+)/)?.[1];
     if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
 
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-      'Cookie': state.sessionCookie,
+      'Cookie': getCookie(),
       'Content-Type': 'application/x-www-form-urlencoded'
     };
 
@@ -46,15 +42,12 @@ export async function removeFromFavFolder(aid: number, folderId: number): Promis
 
 /** 注册主进程 API，并恢复本地登录凭据。 */
 export function setupApi() {
-  state.sessionCookie = authStore.get('sessionCookie');
-
-
   ipcMain.handle('get-user-info', async () => {
-    if (!state.sessionCookie) return { isLogin: false };
+    if (!getCookie()) return { isLogin: false };
     try {
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie
+        'Cookie': getCookie()
       };
       const res = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
       if (res.data.code === 0 && res.data.data.isLogin) {
@@ -67,8 +60,7 @@ export function setupApi() {
       }
       
       // Cookie 已过期或被踢下线，自动清理
-      state.sessionCookie = '';
-      authStore.delete('sessionCookie');
+          clearCookie();
       return { isLogin: false };
     } catch (e: any) { 
       return { isLogin: false, error: e.message }; 
@@ -77,17 +69,16 @@ export function setupApi() {
 
   // 手动退出登录
   ipcMain.handle('logout', async () => {
-    state.sessionCookie = '';
-    authStore.delete('sessionCookie');
+    clearCookie();
     return { success: true };
   });
 
   ipcMain.handle('get-default-fav-id', async () => {
-    if (!state.sessionCookie) return null;
+    if (!getCookie()) return null;
     try {
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie
+        'Cookie': getCookie()
       };
       const navRes = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
       if (navRes.data.code !== 0 || !navRes.data.data.isLogin) return null;
@@ -102,14 +93,14 @@ export function setupApi() {
   });
 
   ipcMain.handle('collect-to-fav-folder', async (event, aid: number, folderId: number) => {
-    if (!state.sessionCookie) return { success: false, message: '请先登录' };
+    if (!getCookie()) return { success: false, message: '请先登录' };
     try {
-      const csrf = state.sessionCookie.match(/bili_jct=([^;]+)/)?.[1];
+      const csrf = getCookie().match(/bili_jct=([^;]+)/)?.[1];
       if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
 
       const headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie,
+        'Cookie': getCookie(),
         'Content-Type': 'application/x-www-form-urlencoded'
       };
 
@@ -151,8 +142,7 @@ export function setupApi() {
       if (res.data.data.code === 0) {
         const cookies = res.headers['set-cookie'];
         if (cookies) {
-          state.sessionCookie = cookies.map((c: string) => c.split(';')[0]).join('; ');
-          authStore.set('sessionCookie', state.sessionCookie);
+          setCookie(cookies.map((c: string) => c.split(';')[0]).join('; '));
           return { status: 'success' };
         }
       } 
