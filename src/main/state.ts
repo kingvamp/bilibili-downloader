@@ -35,6 +35,5 @@ export const state: AppState = {
 };
 
 export const AppPaths = {
-  get cookiePath() { return path.join(app.getPath('userData'), 'cookie.txt'); },
   get historyPath() { return path.join(app.getPath('userData'), 'download_history.txt'); }
 };
