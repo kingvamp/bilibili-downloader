@@ -8,6 +8,7 @@ import fg from 'fast-glob';
 import { state, AppPaths } from './state';
 import { removeFromFavFolder } from './api';
 import { shouldUnfavAfterDownload } from './scheduler';
+import { getSettings } from './settings';
 
 function decodeChunk(decoder: TextDecoder, data: Buffer | string): string {
   return typeof data === 'string' ? data : decoder.decode(data, { stream: true });
@@ -174,7 +175,7 @@ export function setupDownloader() {
   });
 
   ipcMain.on('queue-finished', () => {
-    if (state.isNotifyEnabled && Notification.isSupported()) {
+    if (getSettings().notifyState && Notification.isSupported()) {
         new Notification({
             title: '🎉 所有任务已下载完成',
             body: '您的批量下载队列已全部处理完毕！',
@@ -182,7 +183,7 @@ export function setupDownloader() {
         }).show();
     }
 
-    if (state.isSoundEnabled) {
+    if (getSettings().soundState) {
         shell.beep();
     }
 
@@ -191,9 +192,10 @@ export function setupDownloader() {
     }
   });
 
-  ipcMain.on('start-download', (event, rawUrl, isBatch, dlSub, downloadDir, isSilent, isMultiThread, aid?: number, mediaId?: number) => {
+  ipcMain.on('start-download', (event, rawUrl, isBatch, isSilent, aid?: number, mediaId?: number) => {
     if (!rawUrl) return;
 
+    const { dlSub, downloadDir, multiThread } = getSettings();
     const binDir = app.isPackaged 
         ? path.join(process.resourcesPath, 'bin') 
         : path.join(__dirname, '../bin');
