@@ -3,18 +3,19 @@ import axios from 'axios';
 import { state } from './state';
 
 import { getSetting, settingsStore } from './settings';
+import { getCookie } from './auth';
 
 export function shouldUnfavAfterDownload(): boolean {
   return getSetting('unfavAfterDownload');
 }
 
 async function fetchDefaultFavId(): Promise<number | null> {
-  if (!state.sessionCookie) return null;
+  if (!getCookie()) return null;
 
   try {
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-      'Cookie': state.sessionCookie
+      'Cookie': getCookie()
     };
     const nav = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
     if (nav.data.code !== 0 || !nav.data.data.isLogin) return null;
@@ -37,7 +38,7 @@ async function checkAndTriggerAutoDownload(): Promise<void> {
 
   const now = Date.now();
 
-  if (!state.sessionCookie) {
+  if (!getCookie()) {
     if (now - lastWarnedNoLoginTime >= 60 * 60 * 1000) {
       lastWarnedNoLoginTime = now;
       state.mainWindow.webContents.send(
