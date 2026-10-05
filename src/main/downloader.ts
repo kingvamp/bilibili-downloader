@@ -9,6 +9,7 @@ import { state, AppPaths } from './state';
 import { removeFromFavFolder } from './api';
 import { shouldUnfavAfterDownload } from './scheduler';
 import { getSettings } from './settings';
+import { getCookie } from './auth';
 
 function decodeChunk(decoder: TextDecoder, data: Buffer | string): string {
   return typeof data === 'string' ? data : decoder.decode(data, { stream: true });
@@ -42,7 +43,7 @@ export function setupDownloader() {
 
     const headers = { 
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': state.sessionCookie || '',
+        'Cookie': getCookie() || '',
         'Referer': 'https://www.bilibili.com/',
         'Accept': 'application/json, text/plain, */*',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
@@ -224,9 +225,9 @@ export function setupDownloader() {
         args.push('--multi-file-pattern', '[<ownerName>] [<videoDate:yyyyMMdd>] <videoTitle> - P<pageNumberWithZero> <pageTitle> [<bvid>]');
     }
 
-    if (state.sessionCookie) {
+    if (getCookie()) {
         args.push('-ua', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36');
-        args.push('-c', state.sessionCookie);
+        args.push('-c', getCookie());
     }
 
     state.currentChild?.kill();
