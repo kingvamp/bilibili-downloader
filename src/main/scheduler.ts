@@ -1,25 +1,11 @@
 import { ipcMain, powerMonitor } from 'electron';
 import axios from 'axios';
-import Store from 'electron-store';
 import { state } from './state';
 
-interface SchedulerConfig {
-  autoDownloadFav: boolean;
-  lastTriggeredTime: number;
-  unfavAfterDownload: boolean;
-}
-
-const store = new Store<SchedulerConfig>({
-  name: 'scheduler',
-  defaults: {
-    autoDownloadFav: false,
-    lastTriggeredTime: 0,
-    unfavAfterDownload: false
-  }
-});
+import { getSetting, settingsStore } from './settings';
 
 export function shouldUnfavAfterDownload(): boolean {
-  return store.get('unfavAfterDownload');
+  return getSetting('unfavAfterDownload');
 }
 
 async function fetchDefaultFavId(): Promise<number | null> {
@@ -47,7 +33,7 @@ async function fetchDefaultFavId(): Promise<number | null> {
 let lastWarnedNoLoginTime = 0;
 
 async function checkAndTriggerAutoDownload(): Promise<void> {
-  if (!store.get('autoDownloadFav') || !state.mainWindow) return;
+  if (!getSetting('autoDownloadFav') || !state.mainWindow) return;
 
   const now = Date.now();
 
@@ -74,23 +60,17 @@ async function checkAndTriggerAutoDownload(): Promise<void> {
   }
 
   state.mainWindow.webContents.send('scheduled-fav-download', String(favId), null);
-  store.set('lastTriggeredTime', now);
+  settingsStore.set('lastTriggeredTime', now);
 }
 
 export function setupScheduler(): void {
-  ipcMain.handle('get-last-triggered-time', () => store.get('lastTriggeredTime'));
-  ipcMain.handle('get-auto-download-fav', () => store.get('autoDownloadFav'));
+  ipcMain.handle('get-last-triggered-time', () => settingsStore.get('lastTriggeredTime'));
 
-  ipcMain.on('set-auto-download-fav', (_event, enabled: boolean) => {
-    store.set('autoDownloadFav', enabled);
-    if (enabled) {
-      store.set('lastTriggeredTime', 0);
+  settingsStore.onDidChange('autoDownloadFav', (enabled, previous) => {
+    if (enabled && !previous) {
+      settingsStore.set('lastTriggeredTime', 0);
       void checkAndTriggerAutoDownload();
     }
-  });
-
-  ipcMain.on('set-unfav-after-download', (_event, enabled: boolean) => {
-    store.set('unfavAfterDownload', enabled);
   });
 
   powerMonitor.on('resume', () => void checkAndTriggerAutoDownload());
