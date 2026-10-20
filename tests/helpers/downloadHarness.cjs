@@ -267,6 +267,7 @@ function createSchedulerHarness(trigger) {
       }
     },
     './auth': { getCookie: () => 'bili_jct=mock;' },
+    './downloadRuntime': {getDownloadManager: () => ({startDefaultFavorites: () => {pending.push(trigger(null));return true;}})},
     './state': { state: {
       mainWindow: { webContents: { send: (channel, message) => {
         assert.equal(channel, 'scheduled-fav-download');

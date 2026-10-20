@@ -4,6 +4,19 @@
 /// <reference types="vite-plugin-electron/renderer" />
 
 interface IElectronAPI {
+  consumeUIIntents: () => Promise<{openSettings:boolean;clipboardUrl:string|null}>;
+  getManagerSnapshot: () => Promise<{state:import('./shared/download').DownloadState;logs:string;confirmation:{title:string;bvid:string}|null}>;
+  managerStart: (urls:string[],silent:boolean) => Promise<boolean>;
+  managerDefault: () => Promise<boolean>;
+  managerDetect: (url:string) => Promise<import('./shared/download').DuplicateResult[]|null>;
+  managerCollect: (items:import('./shared/download').DuplicateResult[]) => Promise<boolean>;
+  managerPause: () => void;
+  managerResume: () => void;
+  managerStop: () => void;
+  managerConfirm: (answer:boolean) => void;
+  onManagerState: (callback:(state:import('./shared/download').DownloadState)=>void) => void;
+  onManagerLog: (callback:(message:string)=>void) => void;
+  onManagerConfirm: (callback:(value:{title:string;bvid:string}|null)=>void) => void;
   startDownload: (url: string, isBatch?: boolean, isSilent?: boolean, aid?: number, mediaId?: number) => void;
   stopDownload: () => void;
   onProgress: (callback: (data: string) => void) => void;

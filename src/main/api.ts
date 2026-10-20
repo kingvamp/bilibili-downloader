@@ -51,6 +51,20 @@ async function requestRemoval(aid: number, folderId: number): Promise<{ success:
 }
 
 /** 注册主进程 API，并恢复本地登录凭据。 */
+let defaultFavoriteHandler: () => Promise<number | null> = async () => { throw new Error('API 尚未初始化'); };
+let collectHandler: (event: any, aid: number, id: number) => Promise<{success: boolean;message?: string}> =
+  async () => { throw new Error('API 尚未初始化'); };
+
+/** 向后台流程共享默认收藏夹查询能力。 */
+export function getDefaultFavoriteId(): Promise<number | null> {
+  return defaultFavoriteHandler();
+}
+
+/** 向后台流程共享转存收藏能力。 */
+export function collectToFavorite(aid: number, id: number): Promise<{success: boolean;message?: string}> {
+  return collectHandler({}, aid, id);
+}
+
 export function setupApi() {
   ipcMain.handle('get-user-info', async () => {
     if (!getCookie()) return { isLogin: false };
@@ -83,7 +97,7 @@ export function setupApi() {
     return { success: true };
   });
 
-  ipcMain.handle('get-default-fav-id', async () => {
+  ipcMain.handle('get-default-fav-id', defaultFavoriteHandler = async () => {
     if (!getCookie()) return null;
     try {
       const headers = {
@@ -102,7 +116,7 @@ export function setupApi() {
     } catch (e) { return null; }
   });
 
-  ipcMain.handle('collect-to-fav-folder', async (event, aid: number, folderId: number) => {
+  ipcMain.handle('collect-to-fav-folder', collectHandler = async (event, aid: number, folderId: number) => {
     if (!getCookie()) return { success: false, message: '请先登录' };
     try {
       const csrf = getCookie().match(/bili_jct=([^;]+)/)?.[1];

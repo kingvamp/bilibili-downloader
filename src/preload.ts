@@ -2,6 +2,28 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
+  consumeUIIntents: () => ipcRenderer.invoke('consume-ui-intents'),
+  getManagerSnapshot: () => ipcRenderer.invoke('manager-snapshot'),
+  managerStart: (urls: string[], silent: boolean) => ipcRenderer.invoke('manager-start', urls, silent),
+  managerDefault: () => ipcRenderer.invoke('manager-default'),
+  managerDetect: (url: string) => ipcRenderer.invoke('manager-detect', url),
+  managerCollect: (items: unknown[]) => ipcRenderer.invoke('manager-collect', items),
+  managerPause: () => ipcRenderer.send('manager-pause'),
+  managerResume: () => ipcRenderer.send('manager-resume'),
+  managerStop: () => ipcRenderer.send('manager-stop'),
+  managerConfirm: (answer: boolean) => ipcRenderer.send('manager-confirm-answer', answer),
+  onManagerState: (callback: (state: unknown) => void) => {
+    ipcRenderer.removeAllListeners('manager-state');
+    ipcRenderer.on('manager-state', (_event, value) => callback(value));
+  },
+  onManagerLog: (callback: (message: string) => void) => {
+    ipcRenderer.removeAllListeners('manager-log');
+    ipcRenderer.on('manager-log', (_event, value) => callback(value));
+  },
+  onManagerConfirm: (callback: (value: unknown) => void) => {
+    ipcRenderer.removeAllListeners('manager-confirm');
+    ipcRenderer.on('manager-confirm', (_event, value) => callback(value));
+  },
   startDownload: (url: string, isBatch: boolean = false, isSilent: boolean = false, aid?: number, mediaId?: number) =>
       ipcRenderer.send('start-download', url, isBatch, isSilent, aid, mediaId),
   checkDownloadHistory: (url: string) => ipcRenderer.invoke('check-download-history', url),
