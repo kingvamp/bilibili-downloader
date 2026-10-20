@@ -6,6 +6,10 @@ import { getSetting } from './settings';
 export function setupWindow() {
   createWindow();
   createTray();
+  // 关闭到托盘时可以没有 BrowserWindow，后台调度和下载依然运行。
+  app.on('window-all-closed', () => {
+    if (!getSetting('closeToTray')) app.quit();
+  });
 
   ipcMain.on('window-min', () => state.mainWindow?.hide());
   ipcMain.on('window-max', () => {
@@ -15,7 +19,7 @@ export function setupWindow() {
 
   ipcMain.on('window-close', () => {
     if (getSetting('closeToTray')) {
-      state.mainWindow?.hide(); 
+      state.mainWindow?.close();
     } else {
       state.isQuitting = true;  
       app.quit();         
@@ -40,6 +44,15 @@ export function setupWindow() {
   });
 }
 
+/** 激活主界面：窗口已被销毁则重新创建，并从主进程恢复任务状态。 */
+export function openMainWindow(): void {
+  if (!state.mainWindow || state.mainWindow.isDestroyed()) createWindow();
+  if (state.mainWindow?.isMinimized()) state.mainWindow.restore();
+  state.mainWindow?.show();
+  state.mainWindow?.focus();
+}
+
+/** 构建新的 Chromium 窗口；关闭到托盘时只释放窗口，不退出后台进程。 */
 function createWindow(): void {
   state.mainWindow = new BrowserWindow({
     width: 900,
@@ -64,11 +77,8 @@ function createWindow(): void {
       state.mainWindow?.flashFrame(false);
   });
 
-  state.mainWindow.on('close', (event) => {
-    if (!state.isQuitting && getSetting('closeToTray')) {
-      event.preventDefault(); 
-      state.mainWindow?.hide();     
-    }
+  state.mainWindow.on('closed', () => {
+    state.mainWindow = null;
   });
 }
 
@@ -77,14 +87,12 @@ function createTray(): void {
   state.tray = new Tray(iconPath);
   
   const contextMenu = Menu.buildFromTemplate([
-      { label: '显示主界面', click: () => { state.mainWindow?.show(); state.mainWindow?.focus(); } },
+      { label: '显示主界面', click: openMainWindow },
       { label: '偏好设置', click: () => { 
-          if (state.mainWindow) {
-              if (state.mainWindow.isMinimized()) state.mainWindow.restore();
-              if (!state.mainWindow.isVisible()) state.mainWindow.show();
-              state.mainWindow.focus();
-              state.mainWindow.webContents.send('open-settings'); 
-          }
+          openMainWindow();
+          state.mainWindow?.webContents.once('did-finish-load', () => {
+            state.mainWindow?.webContents.send('open-settings');
+          });
       } },
       { type: 'separator' },
       { label: '退出程序', click: () => { state.isQuitting = true; app.quit(); } }
@@ -93,8 +101,5 @@ function createTray(): void {
   state.tray.setToolTip('Bilibili Downloader');
   state.tray.setContextMenu(contextMenu);
   
-  state.tray.on('double-click', () => {
-      state.mainWindow?.show();
-      state.mainWindow?.focus();
-  });
+  state.tray.on('double-click', openMainWindow);
 }
