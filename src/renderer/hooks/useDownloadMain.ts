@@ -83,6 +83,7 @@ export function useDownload(_settings: Settings) {
       if (!mounted) return;
       if (!receivedState) setStatus(snapshot.state);
       if (!receivedLog) setLogs(snapshot.logs);
+      if (snapshot.confirmation) setRedownloadConfirm({videoTitle:snapshot.confirmation.title,bvid:snapshot.confirmation.bvid});
     }).catch(error => appendLog(`>>> ❌ 无法恢复后台状态：${String(error)}\n`));
     return () => { mounted = false; };
   }, [appendLog, parseProgress]);
