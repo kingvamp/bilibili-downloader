@@ -79,13 +79,6 @@ export function useDownload(_settings: Settings) {
         appendLog('\n>>> 🔗 捕获到普通链接，已自动填入！\n');
       }
     });
-    void window.api.consumeUIIntents().then(intents => {
-      if (!mounted) return;
-      if (intents.clipboardUrl) {
-        setUrlInput(intents.clipboardUrl);
-        appendLog('\n>>> 🔗 捕获到普通链接，已自动填入！\n');
-      }
-    }).catch(error => appendLog(`>>> ❌ 获取剪贴板意图失败：${String(error)}\n`));
     void window.api.getManagerSnapshot().then(snapshot => {
       if (!mounted) return;
       if (!receivedState) setStatus(snapshot.state);
