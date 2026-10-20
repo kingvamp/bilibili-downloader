@@ -3,19 +3,17 @@
 /// <reference types="vite/client" />
 /// <reference types="vite-plugin-electron/renderer" />
 
-import type { DownloadState, DuplicateResult } from './shared/download';
-
 interface IElectronAPI {
-  getManagerSnapshot: () => Promise<{state:DownloadState;logs:string}>;
+  getManagerSnapshot: () => Promise<{state:import('./shared/download').DownloadState;logs:string}>;
   managerStart: (urls:string[],silent:boolean) => Promise<boolean>;
   managerDefault: () => Promise<boolean>;
-  managerDetect: (url:string) => Promise<DuplicateResult[]|null>;
-  managerCollect: (items:DuplicateResult[]) => Promise<boolean>;
+  managerDetect: (url:string) => Promise<import('./shared/download').DuplicateResult[]|null>;
+  managerCollect: (items:import('./shared/download').DuplicateResult[]) => Promise<boolean>;
   managerPause: () => void;
   managerResume: () => void;
   managerStop: () => void;
   managerConfirm: (answer:boolean) => void;
-  onManagerState: (callback:(state:DownloadState)=>void) => void;
+  onManagerState: (callback:(state:import('./shared/download').DownloadState)=>void) => void;
   onManagerLog: (callback:(message:string)=>void) => void;
   onManagerConfirm: (callback:(value:{title:string;bvid:string}|null)=>void) => void;
   startDownload: (url: string, isBatch?: boolean, isSilent?: boolean, aid?: number, mediaId?: number) => void;
