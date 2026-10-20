@@ -27,9 +27,31 @@ async function inspectWithBBDown(downloaderPath: string, url: string): Promise<s
 }
 
 /** 注册下载控制、历史检查和队列完成通知。 */
+let inspectHandler: (event: any, url: string) => Promise<any[]> = async () => { throw new Error('下载器尚未初始化'); };
+let downloadHandler: (event: any, rawUrl: string, isBatch: boolean, isSilent: boolean, aid?: number, mediaId?: number) => void = () => { throw new Error('下载器尚未初始化'); };
+
+/** 复用原有查重逻辑，在主进程查询而不依赖渲染器。 */
+export function inspectHistory(url: string, log: (s: string) => void): Promise<any[]> {
+  return inspectHandler({ sender: { send: (_channel: string, message: string) => log(message) } }, url);
+}
+
+/** 复用原有 BBDown 执行逻辑，Promise 在历史同步及取消收藏完成后才结算。 */
+export function executeDownload(task: {url: string; isSilent: boolean; aid?: number; mediaId?: number}, log: (s: string) => void) {
+  let resolve!: (code: number | null) => void;
+  const promise = new Promise<number | null>(done => { resolve = done; });
+  const sender = { send: (channel: string, value: unknown) => {
+    if (channel === 'download-progress') log(String(value));
+    else if (channel === 'download-complete') resolve(value as number | null);
+  } };
+  const isBatch = /^\\d+$/.test(task.url) || task.url.includes('list/ml') || task.url.includes('favlist');
+  try { downloadHandler({sender}, task.url, isBatch, task.isSilent, task.aid, task.mediaId); }
+  catch (error) { log(`>>> ❌ 下载启动失败: ${error instanceof Error ? error.message : String(error)}\\n`); resolve(null); }
+  return {promise, cancel: () => { state.currentChild?.kill(); }};
+}
+
 export function setupDownloader() {
   // 【完善】多维预检查下载历史逻辑
-  ipcMain.handle('check-download-history', async (event, url: string) => {
+  ipcMain.handle('check-download-history', inspectHandler = async (event, url: string) => {
     if (!url) return [];
     
     // 1. 加载现有历史记录
@@ -190,7 +212,7 @@ export function setupDownloader() {
     }
   });
 
-  ipcMain.on('start-download', (event, rawUrl, isBatch, isSilent, aid?: number, mediaId?: number) => {
+  ipcMain.on('start-download', downloadHandler = (event, rawUrl, isBatch, isSilent, aid?: number, mediaId?: number) => {
     if (!rawUrl) return;
 
     const { dlSub, downloadDir, multiThread } = getSettings();
