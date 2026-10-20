@@ -1,6 +1,7 @@
 import { clipboard } from 'electron';
 import { state } from './state';
 import { getDownloadManager } from './downloadRuntime';
+import { openClipboardWindow } from './window';
 import { getSetting, settingsStore } from './settings';
 
 let clipboardTimer: NodeJS.Timeout | null = null;
@@ -33,13 +34,8 @@ export function setupClipboard() {
         // Handle Normal Bilibili URL matching
         if (getSetting('clipboardMonitor')) {
           if (/bilibili\.com|b23\.tv/i.test(text)) {
-            if (state.mainWindow) {
-              console.log(`[Clipboard] Found matching URL, notifying renderer...`);
-              if (state.mainWindow.isMinimized()) state.mainWindow.restore();
-              if (!state.mainWindow.isVisible()) state.mainWindow.show();
-              state.mainWindow.focus();
-              state.mainWindow.webContents.send('clipboard-match', text);
-            }
+            console.log('[Clipboard] Found matching URL, notifying renderer...');
+            openClipboardWindow(text);
           }
         }
       }
