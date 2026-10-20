@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useSettings } from './hooks/useSettings';
-import { useDownload } from './hooks/useDownload';
+import { useDownload } from './hooks/useDownloadMain';
 
 import { Header } from './components/layout/Header';
 import { LogPanel } from './components/sections/LogPanel';
