@@ -3,12 +3,23 @@ import path from 'path';
 import { state } from './state';
 import { getSetting } from './settings';
 
+// 新窗口尚未完成 React 挂载时，跨进程交互意图由主进程保留。
+let pendingSettings = false;
+let pendingClipboard: string | null = null;
+
 export function setupWindow() {
   createWindow();
   createTray();
   // 关闭到托盘时可以没有 BrowserWindow，后台调度和下载依然运行。
   app.on('window-all-closed', () => {
     if (!getSetting('closeToTray')) app.quit();
+  });
+
+  ipcMain.handle('consume-ui-intents', () => {
+    const result = { openSettings: pendingSettings, clipboardUrl: pendingClipboard };
+    pendingSettings = false;
+    pendingClipboard = null;
+    return result;
   });
 
   ipcMain.on('window-min', () => state.mainWindow?.hide());
@@ -45,6 +56,22 @@ export function setupWindow() {
 }
 
 /** 激活主界面：窗口已被销毁则重新创建，并从主进程恢复任务状态。 */
+/** 让剪贴板唤醒在窗口销毁后仍能可靠传递到新建 React 界面。 */
+export function openClipboardWindow(url: string): void {
+  const ready = Boolean(state.mainWindow && !state.mainWindow.isDestroyed() && !state.mainWindow.webContents.isLoading());
+  if (!ready) pendingClipboard = url;
+  openMainWindow();
+  if (ready) state.mainWindow?.webContents.send('clipboard-match', url);
+}
+
+/** 打开偏好设置，新建窗口时由 React 主动领取打开意图。 */
+function openSettingsWindow(): void {
+  const ready = Boolean(state.mainWindow && !state.mainWindow.isDestroyed() && !state.mainWindow.webContents.isLoading());
+  if (!ready) pendingSettings = true;
+  openMainWindow();
+  if (ready) state.mainWindow?.webContents.send('open-settings');
+}
+
 export function openMainWindow(): void {
   if (!state.mainWindow || state.mainWindow.isDestroyed()) createWindow();
   if (state.mainWindow?.isMinimized()) state.mainWindow.restore();
@@ -88,12 +115,7 @@ function createTray(): void {
   
   const contextMenu = Menu.buildFromTemplate([
       { label: '显示主界面', click: openMainWindow },
-      { label: '偏好设置', click: () => { 
-          openMainWindow();
-          state.mainWindow?.webContents.once('did-finish-load', () => {
-            state.mainWindow?.webContents.send('open-settings');
-          });
-      } },
+      { label: '偏好设置', click: openSettingsWindow },
       { type: 'separator' },
       { label: '退出程序', click: () => { state.isQuitting = true; app.quit(); } }
   ]);
