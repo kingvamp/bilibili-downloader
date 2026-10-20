@@ -93,18 +93,18 @@ export function useDownload(_settings: Settings) {
     const raw = urlInput.trim();
     if (!raw) return alert('请在上方输入框内粘贴链接');
     try {
-      const urls = raw.split(/[\\s\\n\\r]+/).filter(Boolean).map(url => {
-        if (!/^(av)?\\d+$/i.test(url)) return url;
+      const urls = raw.split(/[\s\n\r]+/).filter(Boolean).map(url => {
+        if (!/^(av)?\d+$/i.test(url)) return url;
         try { return avToBv(url.toLowerCase().replace('av','')); }
         catch (error) {
-          appendLog(`>>> ⚠️ AV 号转换失败，沿用原始输入：${String(error)}\\n`);
+          appendLog(`>>> ⚠️ AV 号转换失败，沿用原始输入：${String(error)}\n`);
           return url;
         }
       });
       const started = await window.api.managerStart(urls,false);
       if (started) setUrlInput('');
     } catch (error) {
-      appendLog(`>>> ❌ 下载请求失败：${String(error)}\\n`);
+      appendLog(`>>> ❌ 下载请求失败：${String(error)}\n`);
     }
   };
 
