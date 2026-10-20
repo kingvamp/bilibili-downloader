@@ -59,11 +59,14 @@ export function useDownload(_settings: Settings) {
   /** 先订阅事件，再读取权威快照，避免漏掉启动期状态。 */
   useEffect(() => {
     let mounted = true;
+    let receivedState = false;
+    let receivedLog = false;
     window.api.onManagerState(value => {
-      if (mounted) setStatus(value);
+      if (mounted) { receivedState = true; setStatus(value); }
     });
     window.api.onManagerLog(message => {
       if (!mounted) return;
+      receivedLog = true;
       appendLog(message);
       parseProgress(message);
     });
@@ -78,8 +81,8 @@ export function useDownload(_settings: Settings) {
     });
     void window.api.getManagerSnapshot().then(snapshot => {
       if (!mounted) return;
-      setStatus(snapshot.state);
-      setLogs(snapshot.logs);
+      if (!receivedState) setStatus(snapshot.state);
+      if (!receivedLog) setLogs(snapshot.logs);
     }).catch(error => appendLog(`>>> ❌ 无法恢复后台状态：${String(error)}\n`));
     return () => { mounted = false; };
   }, [appendLog, parseProgress]);
@@ -89,12 +92,20 @@ export function useDownload(_settings: Settings) {
     if (status.busy) return;
     const raw = urlInput.trim();
     if (!raw) return alert('请在上方输入框内粘贴链接');
-    const urls = raw.split(/[\s\n\r]+/).filter(Boolean).map(url => {
-      if (!/^(av)?\d+$/i.test(url)) return url;
-      return avToBv(url.toLowerCase().replace('av',''));
-    });
-    const started = await window.api.managerStart(urls,false);
-    if (started) setUrlInput('');
+    try {
+      const urls = raw.split(/[\\s\\n\\r]+/).filter(Boolean).map(url => {
+        if (!/^(av)?\\d+$/i.test(url)) return url;
+        try { return avToBv(url.toLowerCase().replace('av','')); }
+        catch (error) {
+          appendLog(`>>> ⚠️ AV 号转换失败，沿用原始输入：${String(error)}\\n`);
+          return url;
+        }
+      });
+      const started = await window.api.managerStart(urls,false);
+      if (started) setUrlInput('');
+    } catch (error) {
+      appendLog(`>>> ❌ 下载请求失败：${String(error)}\\n`);
+    }
   };
 
   /** 普通入口与剪贴板均走主进程相同的执行权。 */
