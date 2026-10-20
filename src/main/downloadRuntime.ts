@@ -9,6 +9,7 @@ import { DownloadManager } from './downloadManager';
 import type { DownloadState, DuplicateResult } from '../shared/download';
 
 let pendingConfirm: ((answer: boolean) => void) | null = null;
+let confirmation: {title:string;bvid:string} | null = null;
 let manager: DownloadManager | null = null;
 
 /** 将状态和日志广播给当前打开的 UI，无窗口不影响实际工作流。 */
@@ -22,7 +23,8 @@ function notify(channel: string, value: unknown): void {
 function confirmRedownload(title: string, bvid: string): Promise<boolean> {
   return new Promise(resolve => {
     pendingConfirm = resolve;
-    notify('manager-confirm', {title, bvid});
+    confirmation = {title, bvid};
+    notify('manager-confirm', confirmation);
   });
 }
 
@@ -30,6 +32,7 @@ function confirmRedownload(title: string, bvid: string): Promise<boolean> {
 function cancelConfirmation(): void {
   const resolve = pendingConfirm;
   pendingConfirm = null;
+  confirmation = null;
   notify('manager-confirm', null);
   resolve?.(false);
 }
@@ -63,7 +66,7 @@ export function setupDownloadRuntime(): void {
     }
   });
 
-  ipcMain.handle('manager-snapshot', () => getDownloadManager().snapshot());
+  ipcMain.handle('manager-snapshot', () => ({ ...getDownloadManager().snapshot(), confirmation }));
   ipcMain.handle('manager-start', (_event, urls: string[], silent: boolean) => getDownloadManager().startUrls(urls, silent));
   ipcMain.handle('manager-default', () => getDownloadManager().startDefaultFavorites());
   ipcMain.handle('manager-detect', (_event, url: string) => getDownloadManager().detect(url));
@@ -74,6 +77,7 @@ export function setupDownloadRuntime(): void {
   ipcMain.on('manager-confirm-answer', (_event, answer: boolean) => {
     const resolve = pendingConfirm;
     pendingConfirm = null;
+    confirmation = null;
     resolve?.(answer);
   });
 }
