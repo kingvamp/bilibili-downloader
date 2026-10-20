@@ -67,7 +67,15 @@ function App() {
   // Listeners
   useEffect(() => {
     window.api.onOpenSettings(() => setIsSettingsModalOpen(true));
-  }, []);
+    // 新建窗口后主动领取托盘菜单或剪贴板的交互意图。
+    void window.api.consumeUIIntents().then(intents => {
+      if (intents.openSettings) setIsSettingsModalOpen(true);
+      if (intents.clipboardUrl) {
+        setUrlInput(intents.clipboardUrl);
+        appendLog('\n>>> 🔗 捕获到普通链接，已自动填入！\n');
+      }
+    }).catch(error => appendLog(`>>> ❌ 恢复界面意图失败：${String(error)}\n`));
+  }, [setUrlInput, appendLog]);
 
   return (
     <>
