@@ -14,6 +14,8 @@ interface Dependencies {
   download(task: DownloadTask, log: (message: string) => void): DownloadExecution;
   remove(aid: number, mediaId: number): Promise<{ success: boolean; message?: string }>;
   collect(aid: number, mediaId: number): Promise<{ success: boolean; message?: string }>;
+  /** 保留原有收藏操作间隔，避免连续发送请求。 */
+  waitBetweenFavoriteMutations(): Promise<void>;
   confirmRedownload(title: string, bvid: string): Promise<boolean>;
   cancelConfirmation(): void;
   onState(state: DownloadState): void;
@@ -248,11 +250,16 @@ export class DownloadManager {
             this.log(`>>> [${i + 1}/${downloaded.length}] ⚠️ 跳过取消收藏 ${item.bvid}，原因：未能获取到 AID\n`);
             continue;
           }
-          const result = await this.deps.remove(item.aid, favId);
-          if (result.success) removed++;
-          this.log(result.success
-            ? `>>> [${i + 1}/${downloaded.length}] 🗑️ 已取消收藏: ${item.title || item.bvid}\n`
-            : `>>> [${i + 1}/${downloaded.length}] ❌ 取消收藏失败: ${item.title || item.bvid} (${result.message || '未知错误'})\n`);
+          try {
+            const result = await this.deps.remove(item.aid, favId);
+            if (result.success) removed++;
+            this.log(result.success
+              ? `>>> [${i + 1}/${downloaded.length}] 🗑️ 已取消收藏: ${item.title || item.bvid}\n`
+              : `>>> [${i + 1}/${downloaded.length}] ❌ 取消收藏失败: ${item.title || item.bvid} (${result.message || '未知错误'})\n`);
+          } catch (error) {
+            this.log(`>>> [${i + 1}/${downloaded.length}] ❌ 取消收藏出错: ${item.bvid} (${error instanceof Error ? error.message : String(error)})\n`);
+          }
+          if (!run.stopped && i + 1 < downloaded.length) await this.deps.waitBetweenFavoriteMutations();
         }
         this.log(`>>> 🏁 默认收藏夹清理完毕。成功取消收藏: ${removed} 个，失败: ${downloaded.length - removed} 个。\n`);
       }
@@ -301,11 +308,16 @@ export class DownloadManager {
           this.log(`>>> [${i + 1}/${items.length}] ⚠️ 跳过 ${item.bvid}: 未能获取到 AID\n`);
           continue;
         }
-        const result = await this.deps.collect(item.aid, id);
-        if (result.success) success++;
-        this.log(result.success
-          ? `>>> [${i + 1}/${items.length}] ✅ 已转存: ${item.title}\n`
-          : `>>> [${i + 1}/${items.length}] ❌ 转存失败: ${item.title} (${result.message})\n`);
+        try {
+          const result = await this.deps.collect(item.aid, id);
+          if (result.success) success++;
+          this.log(result.success
+            ? `>>> [${i + 1}/${items.length}] ✅ 已转存: ${item.title}\n`
+            : `>>> [${i + 1}/${items.length}] ❌ 转存失败: ${item.title} (${result.message})\n`);
+        } catch (error) {
+          this.log(`>>> [${i + 1}/${items.length}] ❌ 转存出错: ${item.bvid} (${error instanceof Error ? error.message : String(error)})\n`);
+        }
+        if (!run.stopped && i + 1 < items.length) await this.deps.waitBetweenFavoriteMutations();
       }
       this.log(`>>> 🏁 转存处理完毕。成功: ${success}，失败: ${items.length - success}。\n`);
     });
