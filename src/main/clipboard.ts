@@ -1,5 +1,6 @@
 import { clipboard } from 'electron';
 import { state } from './state';
+import { getDownloadManager } from './downloadRuntime';
 import { getSetting, settingsStore } from './settings';
 
 let clipboardTimer: NodeJS.Timeout | null = null;
@@ -22,9 +23,9 @@ export function setupClipboard() {
         // Handle Silent Download Command
         if (text.startsWith('Enhancer_Download||')) {
           const targetUrl = text.split('||')[1]?.trim();
-          if (targetUrl && state.mainWindow) {
+          if (targetUrl) {
             console.log(`[Clipboard] Triggering silent download: ${targetUrl}`);
-            state.mainWindow.webContents.send('silent-clipboard-match', targetUrl);
+            getDownloadManager().startUrls([targetUrl], true);
           }
           return;
         }
