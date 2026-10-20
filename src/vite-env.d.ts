@@ -4,7 +4,7 @@
 /// <reference types="vite-plugin-electron/renderer" />
 
 interface IElectronAPI {
-  getManagerSnapshot: () => Promise<{state:import('./shared/download').DownloadState;logs:string}>;
+  getManagerSnapshot: () => Promise<{state:import('./shared/download').DownloadState;logs:string;confirmation:{title:string;bvid:string}|null}>;
   managerStart: (urls:string[],silent:boolean) => Promise<boolean>;
   managerDefault: () => Promise<boolean>;
   managerDetect: (url:string) => Promise<import('./shared/download').DuplicateResult[]|null>;
