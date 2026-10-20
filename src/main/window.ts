@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, Tray, Menu, shell, dialog } from 'electron
 import path from 'path';
 import { state } from './state';
 import { getSetting } from './settings';
+import { cancelPendingConfirmation } from './downloadRuntime';
 
 // 新窗口尚未完成 React 挂载时，跨进程交互意图由主进程保留。
 let pendingSettings = false;
@@ -105,6 +106,8 @@ function createWindow(): void {
   });
 
   state.mainWindow.on('closed', () => {
+    // 主界面关闭后不允许未回答的重复下载确认阻塞后台自动扫描。
+    cancelPendingConfirmation();
     state.mainWindow = null;
   });
 }
