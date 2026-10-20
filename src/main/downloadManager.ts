@@ -44,6 +44,9 @@ export class DownloadManager {
 
   constructor(private readonly deps: Dependencies) {}
 
+  /** 记录主进程外部调度异常，供重新打开的界面查看。 */
+  report(message: string): void { this.log(message); }
+
   /** 返回真实后台状态供渲染器重载后恢复显示。 */
   snapshot(): { state: DownloadState; logs: string } {
     return { state: this.state(), logs: this.logs };
