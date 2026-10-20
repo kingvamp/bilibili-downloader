@@ -17,6 +17,7 @@
 | `src/renderer/App.tsx` | 挂载 UI、恢复新建窗口的打开设置和剪贴板意图。 |
 | `src/preload.ts` / `src/vite-env.d.ts` | 显式声明主进程命令和只读状态事件 IPC。 |
 | `tests/main-process-manager.test.cjs` | 主进程控制器的竞争、无窗口执行、停止和暂停回归测试。 |
+| `tests/window-lifecycle.test.cjs` | 关闭到托盘释放窗口、重新打开和 UI 意图恢复测试。 |
 | `tests/helpers/downloadHarness.cjs` | 真实源码隔离测试工具。 |
 
 ## 关键调用关系
