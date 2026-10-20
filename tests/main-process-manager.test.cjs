@@ -26,6 +26,7 @@ function harness(overrides = {}) {
     },
     remove: async (aid, mediaId) => { removals.push({aid,mediaId}); return {success:true}; },
     collect: async () => ({success:true}),
+    waitBetweenFavoriteMutations: async () => {},
     confirmRedownload: async () => { events.confirmations++; return false; },
     cancelConfirmation: () => {},
     onState: state => states.push(state),
