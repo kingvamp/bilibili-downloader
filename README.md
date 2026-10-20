@@ -45,3 +45,16 @@
 ## 📄 许可声明
 
 本项目仅供编程学习与交流使用，请务必遵守相关法律法规，**请勿用于商业用途或非法下载侵权、付费内容**。
+
+## 后台运行架构（重构分支）
+
+下载任务与流程独占控制归 Electron 主进程，React 只显示状态。关闭到系统托盘时销毁 Chromium 主窗口，托盘、每小时扫描、剪贴板静默下载与 BBDown 继续运行；重新打开窗口自动恢复队列状态与日志。
+
+默认收藏夹自动扫描仍每小时检查一次，并保留启动、重新开启和系统唤醒触发。若已有流程占用，新的触发按原规则忽略，不额外积压任务。
+
+- 主进程队列回归：`node --test tests/main-process-manager.test.cjs`
+- 全部测试：`npm test`
+- 构建：`npm run build`
+- 打包冒烟：`npm run test:packaged`（需 Windows 与已构建安装目录）
+
+以上重构目前位于 `refactor/main-process-download-manager` 分支，合并前必须在 Windows 真机执行完整测试和实际下载验证。
