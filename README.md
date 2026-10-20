@@ -52,7 +52,7 @@
 
 默认收藏夹自动扫描仍每小时检查一次，并保留启动、重新开启和系统唤醒触发。若已有流程占用，新的触发按原规则忽略，不额外积压任务。
 
-- 主进程队列回归：`node --test tests/main-process-manager.test.cjs`
+- 主进程队列与托盘生命周期回归：`node --test tests/main-process-manager.test.cjs tests/window-lifecycle.test.cjs`
 - 全部测试：`npm test`
 - 构建：`npm run build`
 - 打包冒烟：`npm run test:packaged`（需 Windows 与已构建安装目录）
