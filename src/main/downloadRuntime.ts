@@ -53,6 +53,7 @@ export function setupDownloadRuntime(): void {
     download: executeDownload,
     remove: removeFromFavFolder,
     collect: collectToFavorite,
+    waitBetweenFavoriteMutations: () => new Promise(resolve => setTimeout(resolve, 300)),
     confirmRedownload,
     cancelConfirmation: cancelPendingConfirmation,
     onState: (snapshot: DownloadState) => notify('manager-state', snapshot),
