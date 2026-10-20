@@ -29,7 +29,7 @@ function confirmRedownload(title: string, bvid: string): Promise<boolean> {
 }
 
 /** 终止当前确认，禁止等待用户的流程一直占用执行权。 */
-function cancelConfirmation(): void {
+export function cancelPendingConfirmation(): void {
   const resolve = pendingConfirm;
   pendingConfirm = null;
   confirmation = null;
@@ -54,7 +54,7 @@ export function setupDownloadRuntime(): void {
     remove: removeFromFavFolder,
     collect: collectToFavorite,
     confirmRedownload,
-    cancelConfirmation,
+    cancelConfirmation: cancelPendingConfirmation,
     onState: (snapshot: DownloadState) => notify('manager-state', snapshot),
     onLog: message => notify('manager-log', message),
     onFinished: () => {
