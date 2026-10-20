@@ -1,5 +1,5 @@
 // 定时任务模块：启动、每小时轮询和系统唤醒时通知统一下载流程。
-// 关联：settings.ts 保存开关和触发时间，渲染进程取得执行权后查询默认收藏夹。
+// 关联：settings.ts 保存开关和触发时间，downloadRuntime.ts 在主进程直接启动唯一流程。
 import { ipcMain, powerMonitor } from 'electron';
 import { getDownloadManager } from './downloadRuntime';
 import { getSetting, settingsStore } from './settings';
@@ -16,7 +16,7 @@ function checkAndTriggerAutoDownload(): void {
   if (!getCookie()) {
     if (now - lastWarnedNoLoginTime >= 60 * 60 * 1000) {
       lastWarnedNoLoginTime = now;
-      console.warn('[scheduler] 未登录，跳过本次收藏夹扫描');
+      getDownloadManager().report('>>> ⚠️ 每小时自动扫描跳过：尚未登录 Bilibili。\n');
     }
     return;
   }
@@ -37,7 +37,7 @@ export function setupScheduler(): void {
     if (enabled && !previous) checkAndTriggerAutoDownload();
   });
   powerMonitor.on('resume', checkAndTriggerAutoDownload);
-  // 启动延迟用于等待渲染进程注册监听。
+  // 启动后延迟检查，避免与设置及登录状态初始化竞争。
   setTimeout(checkAndTriggerAutoDownload, 10_000);
   setInterval(checkAndTriggerAutoDownload, 60 * 60 * 1000);
 }
