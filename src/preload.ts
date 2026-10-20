@@ -2,6 +2,7 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron';
 
 contextBridge.exposeInMainWorld('api', {
+  consumeUIIntents: () => ipcRenderer.invoke('consume-ui-intents'),
   getManagerSnapshot: () => ipcRenderer.invoke('manager-snapshot'),
   managerStart: (urls: string[], silent: boolean) => ipcRenderer.invoke('manager-start', urls, silent),
   managerDefault: () => ipcRenderer.invoke('manager-default'),
