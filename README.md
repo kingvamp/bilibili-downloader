@@ -35,6 +35,10 @@
 
 ## 本地构建与验证
 
+首次拉取或依赖清单变化后，先执行 `npm ci`，再运行开发或构建命令。依赖目录必须与 package-lock.json 一致；只启动 Vite 不会安装 electron-store、execa、fast-glob 等主进程依赖。
+
+渲染端通过 preload 暴露的 IPC 访问桌面功能，不启用 Node 集成，也不使用 vite-plugin-electron-renderer；Vite 直接构建 React 页面，Electron 插件负责主进程与 preload。
+
 - 开发：`npm run dev`
 - 构建：`npm run build`
 - Windows 安装包与 ZIP：`npm run dist`，产物在 `release/`
@@ -58,3 +62,7 @@
 - 打包冒烟：`npm run test:packaged`（需 Windows 与已构建安装目录）
 
 以上重构目前位于 `refactor/main-process-download-manager` 分支，合并前必须在 Windows 真机执行完整测试和实际下载验证。
+
+## 2026-10-21 开发启动验证
+
+已恢复本机缺失的锁定运行依赖，移除未使用的渲染插件及其 customResolver 警告。56 项回归、TypeScript/Vite 构建和隔离 Electron 启动通过；后者使用本次构建、临时 ASAR/配置和隐藏窗口，隔离剪贴板并拦截 HTTP，验证主界面、preload IPC、设置持久化和空认证。未使用真实登录信息，未触发真实下载或定时扫描；不代表新安装包或用户配置验收通过。

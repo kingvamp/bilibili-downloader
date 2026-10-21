@@ -1,5 +1,5 @@
 # 当前工作上下文
 
-- 当前正在做什么：优化 Bilibili Downloader 的后台常驻可靠性和内存开销，保留每小时一次自动扫描的规则。
-- 上次停在什么位置：已在 `refactor/main-process-download-manager` 分支中接入主进程统一下载控制器、窗口关闭到托盘后释放渲染窗口、恢复 IPC 状态与剪贴板/设置意图。PR #2 已按要求合并至 `main`（合并提交 `d83afceed02115f0259752dee40d791a7c52916d`）。尚未执行 Windows 真机、完整构建以及新增主进程/窗口测试的验收。
-- 本次修改的提交说明：`merge: PR #2 main-process download workflow`；后台重构与相关回归测试已进入 `main`，下一步执行 `npm test`、`npm run build` 及真实下载验收。
+- 当前正在做什么：已修复开发启动缺少运行依赖及 Vite customResolver 弃用警告，保留既有后台下载架构。
+- 上次停在什么位置：本机缺少已锁定的 electron-store 8.2.0、execa 8.0.1、fast-glob 3.3.3，现已补齐；移除渲染端未使用的 vite-plugin-electron-renderer，其余锁定版本未变。56 项回归、TypeScript/Vite 构建和本次构建的隔离 Electron 主进程/preload/React/设置/认证冒烟通过，构建无该弃用警告。临时配置、隐藏窗口、剪贴板隔离及 HTTP 守卫下零网络尝试；未验证真实登录、下载、用户现有配置或新安装包。
+- 本次修改的提交说明：fix(dev): 恢复锁定运行依赖并移除未使用的 Electron 渲染插件（2026-10-21）；对抗性审查确认 IPC 边界、依赖版本与业务代码保持一致。

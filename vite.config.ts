@@ -1,8 +1,8 @@
+// Vite 构建配置：分别打包 React、Electron 主进程与 preload；渲染端仅通过 IPC 访问桌面功能。
 import { defineConfig } from 'vite'
 import path from 'node:path'
 import react from '@vitejs/plugin-react'
 import electron from 'vite-plugin-electron'
-import renderer from 'vite-plugin-electron-renderer'
 import pkg from './package.json'
 
 // https://vitejs.dev/config/
@@ -26,7 +26,6 @@ export default defineConfig({
         },
       },
     ]),
-    renderer(),
   ],
 })
 

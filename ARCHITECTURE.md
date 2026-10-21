@@ -42,3 +42,9 @@
 - 取消收藏只针对成功下载的收藏夹任务，主进程 API 保留业务结果校验和串行处理。
 - 页面关闭不会终止下载；未回答的重新下载弹窗会在窗口关闭时取消，避免阻塞自动扫描。
 - `src/renderer/hooks/useDownload.ts` 等旧 Hook/流程模块仍留在仓库供既有历史回归测试使用，但应用运行入口已经切换到 `useDownloadMain.ts`；需要在完成新架构验收后清理旧测试依赖。
+
+## 开发构建边界
+
+- vite.config.ts 分别构建 React 页面、Electron 主进程和 preload；渲染端保持 contextIsolation=true、nodeIntegration=false，仅使用 preload 提供的 IPC。
+- 已移除未使用的 vite-plugin-electron-renderer；不提供 Node 模块到浏览器的转换，因此不再引入其基于 alias.customResolver 的弃用配置。
+- 运行依赖由 package.json 声明并由 package-lock.json 锁定，拉取依赖变化后需重新安装；Vite 开发命令不负责补装依赖。
