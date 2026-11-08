@@ -1,3 +1,4 @@
+/* 应用公共样式：主界面与通用弹窗共用；设置面板布局由 SettingsModal.css 独立维护。 */
 body {
     margin: 0;
     padding: 0;
@@ -201,28 +202,6 @@ input[type="text"]:focus {
     filter: none;
 }
 
-.option-label {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    user-select: none;
-    transition: 0.2s;
-    font-size: 14px;
-    color: #ccc;
-}
-
-.option-label:hover {
-    color: #fff;
-}
-
-.option-label input[type="checkbox"] {
-    margin-right: 8px;
-    cursor: pointer;
-    accent-color: #00A1D6;
-    width: 16px;
-    height: 16px;
-}
-
 #log {
     width: 100%;
     max-width: 600px;
@@ -267,39 +246,6 @@ input[type="text"]:focus {
     width: 320px;
     position: relative;
     border: 1px solid #444;
-}
-
-.settings-content {
-    width: 480px;
-    text-align: left;
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-}
-
-.settings-scroll-area {
-    flex: 1;
-    overflow-y: auto;
-    padding-right: 10px;
-    margin-right: -10px;
-}
-
-/* Custom Scrollbar for premium feel */
-.settings-scroll-area::-webkit-scrollbar {
-    width: 6px;
-}
-
-.settings-scroll-area::-webkit-scrollbar-track {
-    background: transparent;
-}
-
-.settings-scroll-area::-webkit-scrollbar-thumb {
-    background: #444;
-    border-radius: 3px;
-}
-
-.settings-scroll-area::-webkit-scrollbar-thumb:hover {
-    background: #555;
 }
 
 .modal-close-icon {
@@ -364,13 +310,6 @@ input[type="text"]:focus {
     height: 180px;
     background: #fff;
     border-radius: 4px;
-}
-
-.setting-title {
-    font-size: 12px;
-    color: #888;
-    margin-bottom: 6px;
-    display: block;
 }
 
 .shortcut-group {
@@ -475,19 +414,6 @@ input[type="text"]:focus {
     margin-bottom: 20px;
 }
 
-.setting-input-field {
-    flex: 1;
-    padding: 8px 12px;
-    background: #111;
-    border: 1px solid #444;
-    color: #00A1D6;
-    border-radius: 4px;
-    font-size: 12px;
-    outline: none;
-    cursor: default;
-    font-family: Consolas, monospace;
-}
-
 .progress-status {
     display: flex;
     justify-content: space-between;
@@ -525,39 +451,6 @@ input[type="text"]:focus {
     background: linear-gradient(90deg, #fb7299, #ff9db5);
 }
 
-.setting-section-header {
-    margin: 0px 0 15px 0;
-    font-size: 14px;
-    font-weight: bold;
-    color: #00A1D6;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    border-bottom: 1px solid #333;
-    padding-bottom: 8px;
-}
-
-.maintenance-card {
-    background: #1a1a1a;
-    border: 1px dashed #444;
-    border-radius: 8px;
-    padding: 15px;
-    margin-top: 10px;
-    transition: 0.3s;
-}
-
-.maintenance-card:hover {
-    border-color: #ff9800;
-    background: #222;
-}
-
-.maintenance-tip {
-    font-size: 12px;
-    color: #888;
-    line-height: 1.5;
-    margin-bottom: 12px;
-}
-
 /* Spinner Animation */
 .spinner {
     width: 14px;
@@ -573,10 +466,4 @@ input[type="text"]:focus {
     to {
         transform: rotate(360deg);
     }
-}
-
-.loading-btn {
-    pointer-events: none;
-    opacity: 0.8;
-    gap: 10px;
 }

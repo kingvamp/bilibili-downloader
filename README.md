@@ -50,7 +50,7 @@
 
 本项目仅供编程学习与交流使用，请务必遵守相关法律法规，**请勿用于商业用途或非法下载侵权、付费内容**。
 
-## 后台运行架构（重构分支）
+## 后台运行架构
 
 下载任务与流程独占控制归 Electron 主进程，React 只显示状态。关闭到系统托盘时销毁 Chromium 主窗口，托盘、每小时扫描、剪贴板静默下载与 BBDown 继续运行；重新打开窗口自动恢复队列状态与日志。
 
@@ -61,8 +61,18 @@
 - 构建：`npm run build`
 - 打包冒烟：`npm run test:packaged`（需 Windows 与已构建安装目录）
 
-以上重构目前位于 `refactor/main-process-download-manager` 分支，合并前必须在 Windows 真机执行完整测试和实际下载验证。
+下载流程变更需在 Windows 执行相关回归和实际下载验证；静态检查不能代替运行验收。
 
 ## 2026-10-21 开发启动验证
 
 已恢复本机缺失的锁定运行依赖，移除未使用的渲染插件及其 customResolver 警告。56 项回归、TypeScript/Vite 构建和隔离 Electron 启动通过；后者使用本次构建、临时 ASAR/配置和隐藏窗口，隔离剪贴板并拦截 HTTP，验证主界面、preload IPC、设置持久化和空认证。未使用真实登录信息，未触发真实下载或定时扫描；不代表新安装包或用户配置验收通过。
+
+## 2026-11-08 下载流程简化
+
+已移除旧渲染进程下载实现、旧控制 IPC 和伪事件适配，所有下载与收藏操作由主进程统一调度。历史读取和收藏夹扫描失败会保留错误并终止相关操作，正常空结果不会触发直接下载。主进程统一维护日志与分P进度，清空日志同步到后台，任务结束或停止会清除分P状态。
+
+现有测试已迁移到当前主进程入口。后续验证发现 execa 在 buffer:false 时可先于输出关闭结算，现已等待 close 后才结束解码、同步历史和结算任务；同步启动失败则直接报告错误，避免等待不会发生的 close。新增两个对应回归，修复后 56 项相关测试全部通过，TypeScript 检查与 Vite 的渲染端、主进程、preload 构建通过。补充验证采用模拟服务及本地 Node 子进程，未启动 Electron、BBDown、真实登录或下载；这些结果不代表真实下载验收。
+
+同日完成设置面板单列排版：固定标题和操作栏，正文独立滚动，统一选项、说明及维护区样式。包含上述改动的 Windows x64 1.1.2 安装包与 ZIP 已生成并覆盖至 `release/`，包内文件一致性核对通过；实际界面、安装及真实下载仍待验收。
+
+进度消息格式参考 [BBDown Program.cs](https://github.com/nilaoda/BBDown/blob/master/BBDown/Program.cs) 和 [Logger.cs](https://github.com/nilaoda/BBDown/blob/master/BBDown.Core/Logger.cs)，仅做源码核对，未运行 BBDown。

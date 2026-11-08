@@ -1,8 +1,11 @@
+// 下载进度视图：仅展示主进程发布的队列状态与当前 BBDown 分P进度。
+import type { DownloadProgress } from '../../../shared/download';
+
 interface ProgressSectionProps {
   totalTasks: number;
   completedTasks: number;
   isDownloading: boolean;
-  subProgress: { current: number; total: number } | null;
+  subProgress: DownloadProgress | null;
 }
 
 export function ProgressSection({ 

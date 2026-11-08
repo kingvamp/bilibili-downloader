@@ -1,5 +1,5 @@
 // 主进程 API 模块：提供获取用户信息、登录/退出、获取默认收藏夹ID、收藏/取消收藏、生成二维码、扫描本地历史等接口，与渲染进程进行 IPC 通信。
-import { ipcMain, dialog, shell } from 'electron';
+import { ipcMain, dialog } from 'electron';
 import axios from 'axios';
 import QRCode from 'qrcode';
 import fs from 'fs';
@@ -7,9 +7,10 @@ import path from 'path';
 import fg from 'fast-glob';
 import { state, AppPaths } from './state';
 import { clearCookie, getCookie, setCookie } from './auth';
+import { readDownloadHistory } from './history';
 
 
-// 下载完成与 IPC 清理共用一个取消收藏队列，任何时刻只发送一个请求。
+// 下载完成与默认收藏夹清理共用一个取消收藏队列，任何时刻只发送一个请求。
 let removalQueue: Promise<void> = Promise.resolve();
 
 /** 串行安排取消收藏请求，某次失败不会阻塞后续请求。 */
@@ -50,21 +51,65 @@ async function requestRemoval(aid: number, folderId: number): Promise<{ success:
   }
 }
 
-/** 注册主进程 API，并恢复本地登录凭据。 */
-let defaultFavoriteHandler: () => Promise<number | null> = async () => { throw new Error('API 尚未初始化'); };
-let collectHandler: (event: any, aid: number, id: number) => Promise<{success: boolean;message?: string}> =
-  async () => { throw new Error('API 尚未初始化'); };
+/** 查询默认收藏夹，缺少登录或收藏夹时返回空值，其余失败保留具体原因。 */
+export async function getDefaultFavoriteId(): Promise<number | null> {
+  const cookie = getCookie();
+  if (!cookie) return null;
 
-/** 向后台流程共享默认收藏夹查询能力。 */
-export function getDefaultFavoriteId(): Promise<number | null> {
-  return defaultFavoriteHandler();
+  const headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
+    'Cookie': cookie
+  };
+  const navRes = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
+  const nav = navRes.data;
+  if (typeof nav?.code !== 'number') throw new Error('查询登录状态失败：响应缺少业务状态码');
+  if (nav.code !== 0) throw new Error(`查询登录状态失败：${nav.message || '接口返回错误'} (code: ${nav.code})`);
+  if (nav.data?.isLogin === false) return null;
+  if (nav.data?.isLogin !== true || !Number.isSafeInteger(nav.data.mid) || nav.data.mid <= 0) {
+    throw new Error('查询登录状态失败：响应缺少有效的登录状态或用户 ID');
+  }
+
+  const favRes = await axios.get(`https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${nav.data.mid}`, { headers });
+  const favorites = favRes.data;
+  if (typeof favorites?.code !== 'number') throw new Error('查询默认收藏夹失败：响应缺少业务状态码');
+  if (favorites.code !== 0) throw new Error(`查询默认收藏夹失败：${favorites.message || '接口返回错误'} (code: ${favorites.code})`);
+  if (!Array.isArray(favorites.data?.list)) throw new Error('查询默认收藏夹失败：响应缺少收藏夹列表');
+  if (favorites.data.list.length === 0) return null;
+  const id = favorites.data.list[0]?.id;
+  if (!Number.isSafeInteger(id) || id <= 0) throw new Error('查询默认收藏夹失败：默认收藏夹 ID 无效');
+  return id;
 }
 
-/** 向后台流程共享转存收藏能力。 */
-export function collectToFavorite(aid: number, id: number): Promise<{success: boolean;message?: string}> {
-  return collectHandler({}, aid, id);
+/** 将视频转存到指定收藏夹，由下载控制器统一安排调用。 */
+export async function collectToFavorite(aid: number, folderId: number): Promise<{success: boolean;message?: string}> {
+  if (!getCookie()) return { success: false, message: '请先登录' };
+  try {
+    const csrf = getCookie().match(/bili_jct=([^;]+)/)?.[1];
+    if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
+
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
+      'Cookie': getCookie(),
+      'Content-Type': 'application/x-www-form-urlencoded'
+    };
+
+    const res = await axios.post(
+      'https://api.bilibili.com/x/v3/fav/resource/deal',
+      `rid=${aid}&type=2&add_media_ids=${folderId}&del_media_ids=&platform=web&jsonp=jsonp&csrf=${csrf}`,
+      { headers }
+    );
+
+    if (res.data.code === 0) {
+      return { success: true };
+    } else {
+      return { success: false, message: res.data.message || '收藏失败' };
+    }
+  } catch (e: any) {
+    return { success: false, message: e.message };
+  }
 }
 
+/** 注册界面需要的查询、登录与历史维护接口。 */
 export function setupApi() {
   ipcMain.handle('get-user-info', async () => {
     if (!getCookie()) return { isLogin: false };
@@ -96,58 +141,6 @@ export function setupApi() {
     clearCookie();
     return { success: true };
   });
-
-  ipcMain.handle('get-default-fav-id', defaultFavoriteHandler = async () => {
-    if (!getCookie()) return null;
-    try {
-      const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': getCookie()
-      };
-      const navRes = await axios.get('https://api.bilibili.com/x/web-interface/nav', { headers });
-      if (navRes.data.code !== 0 || !navRes.data.data.isLogin) return null;
-      const mid = navRes.data.data.mid;
-      
-      const favRes = await axios.get(`https://api.bilibili.com/x/v3/fav/folder/created/list-all?up_mid=${mid}`, { headers });
-      if (favRes.data.code === 0 && favRes.data.data.list && favRes.data.data.list.length > 0) {
-        return favRes.data.data.list[0].id;
-      }
-      return null;
-    } catch (e) { return null; }
-  });
-
-  ipcMain.handle('collect-to-fav-folder', collectHandler = async (event, aid: number, folderId: number) => {
-    if (!getCookie()) return { success: false, message: '请先登录' };
-    try {
-      const csrf = getCookie().match(/bili_jct=([^;]+)/)?.[1];
-      if (!csrf) return { success: false, message: '未找到 CSRF (bili_jct)，请重新登录' };
-
-      const headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/122.0.0.0 Safari/537.36',
-        'Cookie': getCookie(),
-        'Content-Type': 'application/x-www-form-urlencoded'
-      };
-
-      const res = await axios.post(
-        'https://api.bilibili.com/x/v3/fav/resource/deal',
-        `rid=${aid}&type=2&add_media_ids=${folderId}&del_media_ids=&platform=web&jsonp=jsonp&csrf=${csrf}`,
-        { headers }
-      );
-
-      if (res.data.code === 0) {
-        return { success: true };
-      } else {
-        return { success: false, message: res.data.message || '收藏失败' };
-      }
-    } catch (e: any) {
-      return { success: false, message: e.message };
-    }
-  });
-
-  // 从指定收藏夹中取消收藏某视频
-  ipcMain.handle('remove-from-fav-folder', (_event, aid: number, folderId: number) =>
-    removeFromFavFolder(aid, folderId)
-  );
 
   ipcMain.handle('get-qrcode', async () => {
     try {
@@ -220,10 +213,7 @@ export function setupApi() {
       }
       
       // 读取现有历史并合并
-      let existingHistory = '';
-      try { existingHistory = fs.readFileSync(AppPaths.historyPath, 'utf8'); } catch (e) {}
-      const historyLines = existingHistory.split('\n').map(s => s.trim()).filter(Boolean);
-      const historySet = new Set(historyLines);
+      const historySet = readDownloadHistory();
       
       const initialSize = historySet.size;
       foundBvids.forEach(bv => historySet.add(bv));
@@ -245,16 +235,6 @@ export function setupApi() {
   });
 
   // 获取下载历史总数
-  ipcMain.handle('get-history-count', async () => {
-    try {
-      if (fs.existsSync(AppPaths.historyPath)) {
-        const content = fs.readFileSync(AppPaths.historyPath, 'utf8');
-        return content.split('\n').map(s => s.trim()).filter(Boolean).length;
-      }
-      return 0;
-    } catch (e) {
-      return 0;
-    }
-  });
+  ipcMain.handle('get-history-count', () => readDownloadHistory().size);
 
 }

@@ -9,11 +9,9 @@ interface DownloadFormProps {
     isCheckingDuplicates: boolean;
     hasTasks: boolean;
     onDownload: () => void;
-    onCheckAndAddTasks: (urls: string[], isSilent: boolean) => void;
     onDownloadDefaultFav: () => void;
     onDetectFavlist: () => void;
     isDetecting: boolean;
-    appendLog: (msg: string) => void;
 }
 
 /** 展示下载输入、默认收藏夹及检测入口。 */
@@ -25,11 +23,9 @@ export function DownloadForm({
     isCheckingDuplicates,
     hasTasks,
     onDownload,
-    onCheckAndAddTasks,
     onDownloadDefaultFav,
     onDetectFavlist,
-    isDetecting,
-    appendLog
+    isDetecting
 }: DownloadFormProps) {
     return (
         <>

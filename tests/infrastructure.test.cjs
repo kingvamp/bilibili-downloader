@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const fg = require('fast-glob');
-const { loadSource, createMainHarness, createRendererHarness, createDeferred } = require('./helpers/downloadHarness.cjs');
+const { loadSource, createMainHarness, createManagerHarness, createSchedulerHarness, settled } = require('./helpers/downloadHarness.cjs');
 
 // 加载真实设置与认证模块，落盘可控，便于验证失败不改变权威值。
 function createSettingsHarness() {
@@ -75,10 +75,26 @@ test('进程启动失败输出错误并结算 null，日志不泄漏 execa 命�
   await main.download();
   assert.equal(main.hasLog('ENOENT'), true);
   assert.equal(main.hasLog('SECRET_COOKIE'), false);
-  assert.equal(main.messages.at(-1).value, null);
+  assert.equal(main.result, null);
   assert.equal(main.requests.length, 0);
   assert.equal(main.processOptions.buffer, false);
   assert.equal(main.processOptions.windowsHide, true);
+});
+
+test('同步启动失败的无输出子进程无需 close 即结算，且不泄漏 Cookie', async () => {
+  const processError = Object.assign(new Error('BBDown -c SECRET_COOKIE 参数无效'), {
+    code: 'ERR_INVALID_ARG_VALUE', command: 'BBDown -c SECRET_COOKIE'
+  });
+  const main = createMainHarness({ processError });
+  let finished = false;
+  const downloading = main.download().then(code => { finished = true; return code; });
+  await settled();
+  assert.equal(finished, true);
+  assert.equal(await downloading, null);
+  assert.equal(main.hasLog('ERR_INVALID_ARG_VALUE'), true);
+  assert.equal(main.hasLog('SECRET_COOKIE'), false);
+  assert.equal(main.requests.length, 0);
+  assert.equal(main.history, '');
 });
 
 test('标准输出和错误输出交错的 GBK 多字节字符独立解码', async () => {
@@ -90,6 +106,41 @@ test('标准输出和错误输出交错的 GBK 多字节字符独立解码', asy
   await main.download();
   assert.equal(main.hasLog('你'), true);
   assert.equal(main.hasLog('好'), true);
+  assert.equal(main.hasLog('�'), false);
+});
+
+test('退出后等待输出关闭再结算，末尾 GBK 字符和进度完整且不提前取消收藏', async () => {
+  let child;
+  const main = createMainHarness({ deferClose: true, beforeExit: value => {
+    child = value;
+    child.stdout.emit('data', '共计 2 个分P, 已选择：2\n');
+    child.stdout.emit('data', Buffer.from([0xc4]));
+  } });
+  let finished = false;
+  const downloading = main.download().then(code => { finished = true; return code; });
+  await settled();
+  try {
+    // exit 已发生，但 close 前真实执行 Promise 和收尾副作用都必须保持等待。
+    assert.equal(finished, false);
+    assert.equal(main.requests.length, 0);
+    assert.equal(main.history, '');
+    child.stdout.emit('data', Buffer.from([0xe3, 0x0a]));
+    child.stderr.emit('data', '下载P2完毕');
+    await settled();
+    assert.equal(finished, false);
+    assert.equal(main.requests.length, 0);
+    assert.equal(main.hasLog('你'), true);
+    assert.equal(main.hasLog('�'), false);
+    assert.equal(main.progress.at(-1).current, 0);
+  } finally {
+    child.emit('close', 0, null);
+    await downloading;
+  }
+  assert.equal(main.result, 0);
+  assert.equal(main.requests.length, 1);
+  assert.ok(main.history.includes('BV17x411w7KC'));
+  assert.equal(main.progress.at(-1).current, 2);
+  assert.equal(main.progress.at(-1).total, 2);
   assert.equal(main.hasLog('�'), false);
 });
 
@@ -105,26 +156,13 @@ test('真实目录扫描包含大写扩展名和隐藏目录，不把父目录 B
   assert.equal(main.history.includes('BV17x411w7KE'), false);
 });
 
-test('默认收藏夹清理读取已保存偏好，早到的定时事件不使用旧 React 设置', async () => {
-  const renderer = createRendererHarness([
+test('默认收藏夹清理读取主进程已保存偏好，不依赖 React 设置快照', async () => {
+  const env = createManagerHarness([
     { bvid: 'BV17x411w7KC', aid: 170001, isDownloaded: true }
   ], undefined, false, { settings: () => ({ unfavAfterDownload: true }) });
-  await renderer.scheduled();
-  assert.equal(renderer.removals.length, 1);
-});
-
-test('读取设置期间停止保持执行权到读取返回，不再发起收藏夹查询', async () => {
-  const gate = createDeferred();
-  const renderer = createRendererHarness([], undefined, true, { settings: () => gate.promise });
-  const running = renderer.run();
-  renderer.hook.handleStop();
-  await renderer.run();
-  assert.equal(renderer.hook.isWorkflowBusy, true);
-  assert.equal(renderer.lookups, 0);
-  gate.resolve({ unfavAfterDownload: true });
-  await running;
-  assert.equal(renderer.lookups, 0);
-  assert.equal(renderer.hook.isWorkflowBusy, false);
+  createSchedulerHarness(env.manager).enable();
+  await settled();
+  assert.equal(env.removals.length, 1);
 });
 
 test('真实 execa 流消费超过默认缓冲上限仍正常结束', async () => {

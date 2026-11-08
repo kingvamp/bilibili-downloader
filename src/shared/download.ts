@@ -13,6 +13,18 @@ export interface DuplicateResult {
   isDownloaded: boolean;
 }
 
+/** 当前 BBDown 任务已确认的分P进度。 */
+export interface DownloadProgress {
+  current: number;
+  total: number;
+}
+
+/** 执行结果包含历史同步和下载后的收藏操作，取消只针对当前执行实例。 */
+export interface DownloadExecution {
+  promise: Promise<number | null>;
+  cancel(): void;
+}
+
 export interface DownloadState {
   busy: boolean;
   downloading: boolean;
@@ -21,4 +33,5 @@ export interface DownloadState {
   detecting: boolean;
   total: number;
   completed: number;
+  subProgress: DownloadProgress | null;
 }

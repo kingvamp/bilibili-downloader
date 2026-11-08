@@ -13,37 +13,28 @@ interface IElectronAPI {
   managerPause: () => void;
   managerResume: () => void;
   managerStop: () => void;
+  managerAppendLog: (message: string) => void;
+  managerClearLogs: () => void;
   managerConfirm: (answer:boolean) => void;
   onManagerState: (callback:(state:import('./shared/download').DownloadState)=>void) => void;
-  onManagerLog: (callback:(message:string)=>void) => void;
+  onManagerLog: (callback:(logs:string)=>void) => void;
   onManagerConfirm: (callback:(value:{title:string;bvid:string}|null)=>void) => void;
-  startDownload: (url: string, isBatch?: boolean, isSilent?: boolean, aid?: number, mediaId?: number) => void;
-  stopDownload: () => void;
-  onProgress: (callback: (data: string) => void) => void;
-  onComplete: (callback: (code: number | null) => void) => void;
   getQRCode: () => Promise<{ success: boolean; imgData?: string; key?: string; error?: string }>;
   checkLogin: (key: string) => Promise<{ status: string; msg?: string }>;
   getUserInfo: () => Promise<{ isLogin: boolean; uname?: string; face?: string; mid?: number }>;
   logout: () => Promise<{ success: boolean }>;
-  getDefaultFavId: () => Promise<number | null>;
-  collectToFavFolder: (aid: number, folderId: number) => Promise<{ success: boolean; message?: string }>;
-  removeFromFavFolder: (aid: number, folderId: number) => Promise<{ success: boolean; message?: string }>;
-  checkDownloadHistory: (url: string) => Promise<{ bvid: string; aid?: number; title: string; isDownloaded: boolean }[]>;
   openExternal: (url: string) => void;
   
   selectFolder: () => Promise<string | null>;
-  scanFolderForHistory: () => Promise<{ success: boolean, message?: string, foundCount?: number, addedCount?: number, totalInHistory?: number }>;
+  scanFolderForHistory: () => Promise<{ success: true; foundCount: number; addedCount: number; totalInHistory: number } | { success: false; message: string }>;
   getHistoryCount: () => Promise<number>;
   getSettings: () => Promise<import('./shared/settings').Settings>;
   saveSettings: (settings: import('./shared/settings').Settings) => Promise<import('./shared/settings').SaveSettingsResult>;
-  notifyQueueDone: () => void;
 
-  // 每日自动下载
+  // 每小时自动下载
   getLastTriggeredTime: () => Promise<number>;
-  onScheduledFavDownload: (callback: (message: string | null) => void) => void;
   
   onClipboardMatch: (callback: (url: string) => void) => void;
-  onSilentClipboardMatch: (callback: (url: string) => void) => void; 
   onOpenSettings: (callback: () => void) => void;
   
   minWindow: () => void;

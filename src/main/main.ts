@@ -2,7 +2,6 @@ import { app } from 'electron';
 import { setupWindow } from './window';
 import { setupApi } from './api';
 import { setupClipboard, stopClipboard } from './clipboard';
-import { setupDownloader } from './downloader';
 import { setupServer } from './server';
 import { setupScheduler } from './scheduler';
 import { setupSettings } from './settings';
@@ -16,7 +15,6 @@ app.whenReady().then(() => {
   setupApi();
   setupWindow();
   setupClipboard();
-  setupDownloader();
   setupServer();
   setupDownloadRuntime();
   setupScheduler();

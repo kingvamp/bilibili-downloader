@@ -1,17 +1,12 @@
 // 下载流程的唯一控制器：所有入口在主进程同步取得执行权，队列不依赖 React 生命周期。
 // 关联：downloadRuntime.ts 提供系统服务；scheduler.ts、clipboard.ts 与 preload.ts 发起命令。
-import type { DownloadTask, DuplicateResult, DownloadState } from '../shared/download';
-
-interface DownloadExecution {
-  promise: Promise<number | null>;
-  cancel(): void;
-}
+import type { DownloadTask, DuplicateResult, DownloadState, DownloadProgress, DownloadExecution } from '../shared/download';
 
 interface Dependencies {
   getSettings(): { unfavAfterDownload: boolean };
   defaultFavoriteId(): Promise<number | null>;
   inspect(url: string, log: (message: string) => void): Promise<DuplicateResult[]>;
-  download(task: DownloadTask, log: (message: string) => void): DownloadExecution;
+  download(task: DownloadTask, log: (message: string) => void, onProgress: (progress: DownloadProgress) => void): DownloadExecution;
   remove(aid: number, mediaId: number): Promise<{ success: boolean; message?: string }>;
   collect(aid: number, mediaId: number): Promise<{ success: boolean; message?: string }>;
   /** 保留原有收藏操作间隔，避免连续发送请求。 */
@@ -19,7 +14,8 @@ interface Dependencies {
   confirmRedownload(title: string, bvid: string): Promise<boolean>;
   cancelConfirmation(): void;
   onState(state: DownloadState): void;
-  onLog(message: string): void;
+  /** 发布完整日志文本，窗口收到实时事件后无需再合并旧快照。 */
+  onLog(logs: string): void;
   onFinished(): void;
 }
 
@@ -34,6 +30,7 @@ interface Flow {
   completed: number;
   queue: DownloadTask[];
   active: DownloadTask | null;
+  subProgress: DownloadProgress | null;
 }
 
 /** 串行运行扫描、清理和下载，停止后等待已在途操作正常结算。 */
@@ -44,8 +41,14 @@ export class DownloadManager {
 
   constructor(private readonly deps: Dependencies) {}
 
-  /** 记录主进程外部调度异常，供重新打开的界面查看。 */
+  /** 调度与界面提示写入同一份日志，关闭窗口后仍可恢复。 */
   report(message: string): void { this.log(message); }
+
+  /** 清空主进程日志并立即同步所有展示状态。 */
+  clearLogs(): void {
+    this.logs = '等待任务...';
+    this.deps.onLog(this.logs);
+  }
 
   /** 返回真实后台状态供渲染器重载后恢复显示。 */
   snapshot(): { state: DownloadState; logs: string } {
@@ -61,7 +64,7 @@ export class DownloadManager {
     const run: Flow = {
       stopped: false, preparing: true, paused: false, checking: false,
       detecting: false, running: false, total: 0, completed: 0,
-      queue: [], active: null
+      queue: [], active: null, subProgress: null
     };
     this.flow = run;
     this.publish();
@@ -79,7 +82,7 @@ export class DownloadManager {
       this.logs += message;
     }
     if (this.logs.length > 15000) this.logs = this.logs.slice(-10000);
-    this.deps.onLog(message);
+    this.deps.onLog(this.logs);
   }
 
   /** 将执行状态推送给界面；真实值始终属于主进程。 */
@@ -89,7 +92,7 @@ export class DownloadManager {
       busy: Boolean(run), downloading: Boolean(run?.running),
       paused: Boolean(run?.paused), checking: Boolean(run?.checking),
       detecting: Boolean(run?.detecting), total: run?.total ?? 0,
-      completed: run?.completed ?? 0
+      completed: run?.completed ?? 0, subProgress: run?.subProgress ?? null
     };
   }
 
@@ -142,11 +145,17 @@ export class DownloadManager {
       while (!run.stopped && !run.paused && run.queue.length > 0) {
         const task = run.queue.shift()!;
         run.active = task;
+        run.subProgress = null;
         this.log(`\n>>> 🚀 开始下载: ${task.url}\n`);
         this.publish();
         let code: number | null = null;
         try {
-          this.execution = this.deps.download(task, message => this.log(message));
+          this.execution = this.deps.download(task, message => this.log(message), progress => {
+            // 进度只属于当前在途任务，停止后的迟到输出不能恢复已清空状态。
+            if (this.flow !== run || run.active !== task || run.stopped || run.paused) return;
+            run.subProgress = progress;
+            this.publish();
+          });
           code = await this.execution.promise;
         } catch (error) {
           this.log(`>>> ❌ 下载执行失败: ${error instanceof Error ? error.message : String(error)}\n`);
@@ -155,6 +164,7 @@ export class DownloadManager {
         }
         this.log(`\n====== 任务结束 (Code: ${code}) ======\n`);
         run.active = null;
+        run.subProgress = null;
         if (run.stopped) break;
         if (run.paused && code !== 0) {
           run.queue.unshift(task);
@@ -185,34 +195,28 @@ export class DownloadManager {
       this.publish();
       this.log('\n>>> 🔍 正在预解析视频列表并检查下载历史，请稍候...\n');
       const all: DuplicateResult[] = [];
-      try {
-        for (const url of urls) {
+      for (const url of urls) {
+        if (run.stopped) return;
+        all.push(...await this.deps.inspect(url, message => this.log(message)));
+      }
+      if (run.stopped) return;
+      const missing = all.filter(item => !item.isDownloaded);
+      const existing = all.filter(item => item.isDownloaded);
+      if (!all.length) {
+        this.log('>>> 没有可下载的视频，本次流程结束。\n');
+      } else if (!missing.length) {
+        if (all.length === 1) {
+          const item = all[0];
+          const answer = await this.deps.confirmRedownload(item.title || item.bvid, item.bvid);
           if (run.stopped) return;
-          all.push(...await this.deps.inspect(url, message => this.log(message)));
-        }
-        if (run.stopped) return;
-        const missing = all.filter(item => !item.isDownloaded);
-        const existing = all.filter(item => item.isDownloaded);
-        if (!all.length) {
-          this.enqueue(run, tasks);
-        } else if (!missing.length) {
-          if (all.length === 1) {
-            const item = all[0];
-            const answer = await this.deps.confirmRedownload(item.title || item.bvid, item.bvid);
-            if (run.stopped) return;
-            if (answer) this.enqueue(run, tasks);
-            else this.log(`\n>>> ⏭️ 已跳过：${item.bvid}\n`);
-          } else {
-            this.log(`\n>>> 🎉 所有 ${all.length} 个视频均已下载，无需重复下载。\n`);
-          }
+          if (answer) this.enqueue(run, tasks);
+          else this.log(`\n>>> ⏭️ 已跳过：${item.bvid}\n`);
         } else {
-          if (existing.length) this.log(`\n>>> ⏭️ 跳过 ${existing.length} 个已下载视频，正在下载 ${missing.length} 个新视频...\n`);
-          this.enqueue(run, missing.map(item => ({ url: item.bvid, isSilent: false })));
+          this.log(`\n>>> 🎉 所有 ${all.length} 个视频均已下载，无需重复下载。\n`);
         }
-      } catch (error) {
-        if (run.stopped) return;
-        this.log(`>>> ⚠️ 预检查失败：${error instanceof Error ? error.message : String(error)}\n`);
-        throw error;
+      } else {
+        if (existing.length) this.log(`\n>>> ⏭️ 跳过 ${existing.length} 个已下载视频，正在下载 ${missing.length} 个新视频...\n`);
+        this.enqueue(run, missing.map(item => ({ url: item.bvid, isSilent: false })));
       }
     });
     return true;
@@ -229,7 +233,7 @@ export class DownloadManager {
       const id = await this.deps.defaultFavoriteId();
       if (run.stopped) return;
       if (!id) {
-        this.log('>>> ⚠️ 无法获取默认收藏夹 ID，请确保已登录。\n');
+        this.log('>>> ⚠️ 尚未登录或没有可用的默认收藏夹。\n');
         return;
       }
       const favId = Number(id);
@@ -237,7 +241,7 @@ export class DownloadManager {
       const results = await this.deps.inspect(String(favId), message => this.log(message));
       if (run.stopped) return;
       if (!results.length) {
-        this.log('>>> ⚠️ 收藏夹为空或解析失败，本次自动下载跳过。\n');
+        this.log('>>> 收藏夹为空，本次自动下载跳过。\n');
         return;
       }
       const missing = results.filter(item => !item.isDownloaded);
@@ -284,11 +288,11 @@ export class DownloadManager {
     await this.prepare(run, async () => {
       run.detecting = true;
       this.publish();
-      this.log('\n>>> 🔍 正在深度扫描收藏夹全量列表，请稍候...\n');
+      this.log('\n>>> 🔍 正在扫描收藏夹列表，请稍候...\n');
       const items = await this.deps.inspect(url, message => this.log(message));
       if (run.stopped) return;
       result = items;
-      this.log(items.length ? `>>> ✅ 扫描完成，发现 ${items.filter(item => !item.isDownloaded).length} 个未下载视频。\n` : '>>> ⚠️ 未能解析有效的视频列表。\n');
+      this.log(items.length ? `>>> ✅ 扫描完成，发现 ${items.filter(item => !item.isDownloaded).length} 个未下载视频。\n` : '>>> 收藏夹为空。\n');
     });
     return result;
   }
@@ -302,7 +306,7 @@ export class DownloadManager {
       this.publish();
       const id = await this.deps.defaultFavoriteId();
       if (run.stopped) return;
-      if (!id) throw new Error('未能获取默认收藏夹 ID，请确认是否已登录');
+      if (!id) throw new Error('尚未登录或没有可用的默认收藏夹');
       let success = 0;
       for (let i = 0; i < items.length; i++) {
         if (run.stopped) return;
@@ -354,6 +358,7 @@ export class DownloadManager {
     if (!run || run.stopped) return;
     run.stopped = true;
     run.queue.length = 0;
+    run.subProgress = null;
     run.paused = false;
     this.deps.cancelConfirmation();
     this.execution?.cancel();

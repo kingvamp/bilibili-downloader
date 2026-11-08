@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from 'react';
 import { Settings } from '../../types';
+import './SettingsModal.css';
 
 interface SettingsModalProps {
     initialSettings: Settings;
@@ -12,6 +13,7 @@ interface SettingsModalProps {
     onClose: () => void;
 }
 
+/** 展示单列设置分组，保留暂存、保存及历史扫描的现有交互。 */
 export function SettingsModal({
     initialSettings,
     isSaving,
@@ -20,224 +22,211 @@ export function SettingsModal({
 }: SettingsModalProps) {
     const [tempSettings, setTempSettings] = useState<Settings>(initialSettings);
     const [isScanning, setIsScanning] = useState(false);
-    const [historyCount, setHistoryCount] = useState<number>(0);
+    const [historyCount, setHistoryCount] = useState<number | null>(null);
+    const [historyError, setHistoryError] = useState<string | null>(null);
     const [lastTriggeredTime, setLastTriggeredTime] = useState<number>(0);
 
     useEffect(() => {
-        const fetchData = async () => {
-            const count = await window.api.getHistoryCount();
-            setHistoryCount(count);
-            const time = await window.api.getLastTriggeredTime();
-            setLastTriggeredTime(time);
-        };
-        fetchData();
+        let active = true;
+        void window.api.getHistoryCount().then(count => {
+            if (active) setHistoryCount(count);
+        }).catch(error => {
+            if (active) setHistoryError(`历史读取失败：${String(error)}`);
+        });
+        void window.api.getLastTriggeredTime().then(time => {
+            if (active) setLastTriggeredTime(time);
+        }).catch(error => console.error('读取自动下载时间失败:', error));
+        return () => { active = false; };
     }, []);
 
     return (
         <div className="modal-overlay active">
-            <div className="modal-content settings-content" style={{ paddingTop: '16px' }}>
-                <button className="modal-close-icon" onClick={onClose} title="关闭且不保存">
-                    <svg viewBox="0 0 10 10"><path d="M10 1L9 0 5 4 1 0 0 1l4 4-4 4 1 1 4-4 4 4 1-1-4-4z" /></svg>
-                </button>
-                <h3 style={{ marginTop: 0, marginBottom: '8px', color: '#fff', textAlign: 'center', fontSize: '14px' }}>⚙️ 偏好设置</h3>
+            <div className="modal-content settings-content" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+                <div className="settings-header">
+                    <h2 id="settings-title">偏好设置</h2>
+                    <button className="modal-close-icon settings-close-button" onClick={onClose} title="关闭且不保存" aria-label="关闭设置">
+                        <svg viewBox="0 0 10 10" aria-hidden="true"><path d="M10 1L9 0 5 4 1 0 0 1l4 4-4 4 1 1 4-4 4 4 1-1-4-4z" /></svg>
+                    </button>
+                </div>
 
                 <div className="settings-scroll-area">
                     {/* ── 下载设置 ── */}
-                    <div className="setting-section-header">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" /></svg>
-                        下载设置
-                    </div>
-
-                    <div className="setting-item">
-                        <span className="setting-title">默认下载保存目录</span>
-                        <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                                type="text"
-                                readOnly
-                                value={tempSettings.downloadDir}
-                                className="setting-input-field"
-                                style={{ flex: 1, padding: '8px', background: '#222', border: '1px solid #444', color: '#ccc', borderRadius: '4px', fontSize: '12px', outline: 'none', cursor: 'pointer' }}
-                            />
-                            <button
-                                className="download-btn secondary-btn"
-                                onClick={async () => {
-                                    const folder = await window.api.selectFolder();
-                                    if (folder) setTempSettings(prev => ({ ...prev, downloadDir: folder }));
-                                }}
-                            >
-                                更改
-                            </button>
+                    <section className="settings-section" aria-labelledby="settings-download-title">
+                        <h3 id="settings-download-title">下载设置</h3>
+                        <div className="settings-directory">
+                            <label className="settings-description" htmlFor="settings-download-directory">默认下载保存目录</label>
+                            <div className="settings-directory-controls">
+                                <input
+                                    id="settings-download-directory"
+                                    type="text"
+                                    readOnly
+                                    value={tempSettings.downloadDir}
+                                    title={tempSettings.downloadDir}
+                                    className="settings-directory-input"
+                                />
+                                <button
+                                    className="download-btn secondary-btn settings-secondary-button"
+                                    onClick={async () => {
+                                        const folder = await window.api.selectFolder();
+                                        if (folder) setTempSettings(prev => ({ ...prev, downloadDir: folder }));
+                                    }}
+                                >
+                                    更改目录
+                                </button>
+                            </div>
                         </div>
-                    </div>
-
-                    <div className="setting-item" style={{ marginTop: '12px' }}>
-                        <label className="option-label">
+                        <label className="settings-row">
+                            <span className="settings-row-copy">
+                                下载并封装双轨字幕
+                                <span className="settings-description">人工字幕 + AI 字幕</span>
+                            </span>
                             <input
                                 type="checkbox"
                                 checked={tempSettings.dlSub}
                                 onChange={(e) => setTempSettings(prev => ({ ...prev, dlSub: e.target.checked }))}
                             />
-                            下载并封装双轨字幕 (人工+AI)
                         </label>
-                    </div>
-
-                    <div className="setting-item" style={{ marginTop: '12px' }}>
-                        <label className="option-label">
+                        <label className="settings-row">
+                            <span className="settings-row-copy">多线程下载</span>
                             <input
                                 type="checkbox"
                                 checked={tempSettings.multiThread}
                                 onChange={(e) => setTempSettings(prev => ({ ...prev, multiThread: e.target.checked }))}
                             />
-                            开启多线程并发加速 (-mt)
                         </label>
-                    </div>
+                    </section>
 
                     {/* ── 收藏夹自动化 ── */}
-                    <div className="setting-section-header" style={{ marginTop: '8px' }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z" /></svg>
-                        收藏夹自动化
-                    </div>
-
-                    <div className="setting-item">
-                        <label className="option-label">
+                    <section className="settings-section" aria-labelledby="settings-favorites-title">
+                        <h3 id="settings-favorites-title">收藏夹自动化</h3>
+                        <label className="settings-row settings-row-detailed">
+                            <span className="settings-row-copy">
+                                自动下载默认收藏夹的新视频
+                                <span className="settings-description">每小时检查一次，系统唤醒后立即检查。</span>
+                                <span className="settings-description">
+                                    {lastTriggeredTime > 0
+                                        ? `上次下载时间：${new Date(lastTriggeredTime).toLocaleString()}`
+                                        : '上次下载时间：暂无记录'}
+                                </span>
+                                {tempSettings.autoDownloadFav && (
+                                    <span className="settings-description">开启并保存后立即检查；应用启动 10 秒后检查。</span>
+                                )}
+                            </span>
                             <input
                                 type="checkbox"
                                 checked={tempSettings.autoDownloadFav}
                                 onChange={(e) => setTempSettings(prev => ({ ...prev, autoDownloadFav: e.target.checked }))}
                             />
-                            自动下载收藏夹中的新视频
                         </label>
-                        <div style={{ marginTop: '6px', fontSize: '12px', color: '#888', paddingLeft: '22px' }}>
-                            {tempSettings.autoDownloadFav ? (
-                                <>
-                                    🟢 已启用，每小时检查一次，系统唤醒后立即检查。
-                                    <br />
-                                    {lastTriggeredTime > 0
-                                        ? `上次下载时间: ${new Date(lastTriggeredTime).toLocaleString()}`
-                                        : '上次下载时间: 暂无记录 (开启后 10s 内将触发首次检查)'}
-                                </>
-                            ) : (
-                                '⚪ 未启用'
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="setting-item" style={{ marginTop: '12px' }}>
-                        <label className="option-label">
+                        <label className="settings-row settings-row-detailed">
+                            <span className="settings-row-copy">
+                                下载后移除收藏
+                                <span className="settings-description">仅作用于“下载默认收藏夹”流程</span>
+                                <span className={`settings-description${tempSettings.unfavAfterDownload ? ' settings-warning' : ''}`}>
+                                    {tempSettings.unfavAfterDownload
+                                        ? <>取消收藏<strong>不可逆</strong>，请谨慎启用。</>
+                                        : '未启用时，下载后收藏夹保持不变。'}
+                                </span>
+                            </span>
                             <input
                                 type="checkbox"
                                 checked={tempSettings.unfavAfterDownload}
                                 onChange={(e) => setTempSettings(prev => ({ ...prev, unfavAfterDownload: e.target.checked }))}
                             />
-                            下载完成后自动从收藏夹移除视频
                         </label>
-                        <div style={{ marginTop: '6px', fontSize: '12px', paddingLeft: '22px', color: tempSettings.unfavAfterDownload ? '#ff9800' : '#888' }}>
-                            {tempSettings.unfavAfterDownload
-                                ? <>⚠️ 已启用，取消收藏<strong>不可逆</strong>，仅限"下载默认收藏夹"流程。</>
-                                : '⚪ 未启用，下载后收藏夹保持不变'}
-                        </div>
-                    </div>
+                    </section>
 
                     {/* ── 通知与行为 ── */}
-                    <div className="setting-section-header" style={{ marginTop: '8px' }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z" /></svg>
-                        通知与行为
-                    </div>
-
-                    <div className="setting-item">
-                        <label className="option-label">
+                    <section className="settings-section" aria-labelledby="settings-behavior-title">
+                        <h3 id="settings-behavior-title">通知与行为</h3>
+                        <label className="settings-row">
+                            <span className="settings-row-copy">自动提取剪贴板链接</span>
                             <input
                                 type="checkbox"
                                 checked={tempSettings.clipboardMonitor}
                                 onChange={(e) => setTempSettings(prev => ({ ...prev, clipboardMonitor: e.target.checked }))}
                             />
-                            自动监听并提取剪贴板链接
                         </label>
-                    </div>
-
-                    <div className="setting-item" style={{ marginTop: '12px' }}>
-                        <label className="option-label">
+                        <label className="settings-row">
+                            <span className="settings-row-copy">关闭窗口时隐藏到托盘</span>
                             <input
                                 type="checkbox"
                                 checked={tempSettings.closeToTray}
                                 onChange={(e) => setTempSettings(prev => ({ ...prev, closeToTray: e.target.checked }))}
                             />
-                            点击关闭按钮时隐藏到系统托盘
                         </label>
-                    </div>
-
-                    <div className="setting-item" style={{ marginTop: '12px' }}>
-                        <label className="option-label">
+                        <label className="settings-row">
+                            <span className="settings-row-copy">完成时显示系统通知</span>
                             <input
                                 type="checkbox"
                                 checked={tempSettings.notifyState}
                                 onChange={(e) => setTempSettings(prev => ({ ...prev, notifyState: e.target.checked }))}
                             />
-                            任务完成时弹出系统横幅通知
                         </label>
-                    </div>
-
-                    <div className="setting-item" style={{ marginTop: '12px' }}>
-                        <label className="option-label">
+                        <label className="settings-row">
+                            <span className="settings-row-copy">完成时播放提示音</span>
                             <input
                                 type="checkbox"
                                 checked={tempSettings.soundState}
                                 onChange={(e) => setTempSettings(prev => ({ ...prev, soundState: e.target.checked }))}
                             />
-                            任务完成时播放系统提示音
                         </label>
-                    </div>
+                    </section>
 
-                    {/* ── 维护与同步 ── */}
-                    <div className="setting-section-header" style={{ color: '#ff9800', marginTop: '8px' }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-16c-.5-.8-1.4-1.3-2.4-1.3s-1.9.5-2.4 1.3L.3 19c-.5.8-.5 1.8 0 2.6.4.8 1.3 1.3 2.3 1.3h18.2c1 0 1.9-.5 2.3-1.3.5-.8.5-1.8.1-2.6zm-11.2.3c-.6 0-1.1-.5-1.1-1.1 0-.6.5-1.1 1.1-1.1.6 0 1.1.5 1.1 1.1 0 .6-.5 1.1-1.1 1.1zm1.5-4.8c0 .3-.1.5-.4.5h-2.2c-.3 0-.4-.2-.4-.5l-.2-4.7c0-.3.2-.5.5-.5h2.8c.3 0 .5.2.5.5l-.1 4.7z" /></svg>
-                        维护与同步
-                    </div>
-
-                    <div className="maintenance-card">
-                        <div className="maintenance-tip">
-                            如果你手动移动了已下载的视频文件，可以通过此功能递归扫描目录，将发现的视频 BV 号重新同步到本地下载历史记录中，防止重复下载。
-                            <div style={{ marginTop: '8px', color: '#ff9800', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z" /></svg>
-                                当前本地已记录: {historyCount} 条
+                    {/* ── 维护与同步：扫描直接更新历史，不受底部保存或取消影响。 ── */}
+                    <section className="settings-section" aria-labelledby="settings-maintenance-title">
+                        <h3 id="settings-maintenance-title">维护与同步</h3>
+                        <div className="settings-maintenance">
+                            <div className="settings-maintenance-copy">
+                                <span>本地下载历史</span>
+                                <p className="settings-description">移动视频文件后，可递归扫描目录中的 BV 号，补充历史记录以避免重复下载。</p>
+                                <p className={`settings-description${historyError ? ' settings-error' : ''}`} role="status">
+                                    {historyError ?? (historyCount === null ? '正在读取本地历史...' : `当前本地已记录：${historyCount} 条`)}
+                                </p>
+                                <p className="settings-description">扫描会立即更新历史，无需保存设置。</p>
                             </div>
-                        </div>
-                        <button
-                            className={`download-btn secondary-btn ${isScanning ? 'loading-btn' : ''}`}
-                            style={{ width: '100%', justifyContent: 'center', height: '36px', background: '#333', border: '1px solid #555' }}
-                            disabled={isScanning}
-                            onClick={async () => {
-                                setIsScanning(true);
-                                try {
-                                    const res = await window.api.scanFolderForHistory();
-                                    if (res.success) {
-                                        setHistoryCount(res.totalInHistory ?? 0);
-                                        alert(`📋 扫描完成！\n\n共发现 BV 号: ${res.foundCount} 个\n新添加到记录: ${res.addedCount} 个\n当前总记录数: ${res.totalInHistory} 个`);
-                                    } else if (res.message !== '已取消') {
-                                        alert(`❌ 扫描失败: ${res.message}`);
+                            <button
+                                className="download-btn secondary-btn settings-secondary-button"
+                                disabled={isScanning}
+                                onClick={async () => {
+                                    setIsScanning(true);
+                                    try {
+                                        const res = await window.api.scanFolderForHistory();
+                                        if (res.success) {
+                                            setHistoryCount(res.totalInHistory);
+                                            setHistoryError(null);
+                                            alert(`📋 扫描完成！\n\n共发现 BV 号: ${res.foundCount} 个\n新添加到记录: ${res.addedCount} 个\n当前总记录数: ${res.totalInHistory} 个`);
+                                        } else if (res.message !== '已取消') {
+                                            alert(`❌ 扫描失败: ${res.message}`);
+                                        }
+                                    } catch (error) {
+                                        alert(`❌ 扫描失败: ${String(error)}`);
+                                    } finally {
+                                        setIsScanning(false);
                                     }
-                                } finally {
-                                    setIsScanning(false);
-                                }
-                            }}
-                        >
-                            {isScanning ? (
-                                <>
-                                    <div className="spinner"></div>
-                                    <span>正在扫描中，请稍候...</span>
-                                </>
-                            ) : (
-                                <>📂 选择目录并扫描同步历史</>
-                            )}
-                        </button>
-                    </div>
-
+                                }}
+                            >
+                                {isScanning ? (
+                                    <>
+                                        <span className="spinner" aria-hidden="true"></span>
+                                        <span>正在扫描中，请稍候...</span>
+                                    </>
+                                ) : (
+                                    '选择目录并扫描'
+                                )}
+                            </button>
+                        </div>
+                    </section>
                 </div>{/* settings-scroll-area 结束 */}
 
-                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center' }}>
-                    <button className="modal-btn btn-save" disabled={isSaving} onClick={() => void onSave(tempSettings)} style={{ width: '100%', padding: '12px 0' }}>
-                        {isSaving ? '正在保存配置...' : '保存并应用配置'}
-                    </button>
+                <div className="settings-footer">
+                    <span className="settings-description">设置修改在保存后生效</span>
+                    <div className="settings-footer-actions">
+                        <button className="modal-btn btn-cancel" onClick={onClose}>取消</button>
+                        <button className="modal-btn btn-save" disabled={isSaving} onClick={() => void onSave(tempSettings)}>
+                            {isSaving ? '正在保存...' : '保存设置'}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

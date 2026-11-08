@@ -1,4 +1,4 @@
-// 取消收藏回归测试：直接加载主进程和下载 Hook 源码，用内存模拟 IPC、网络和文件系统。
+// 下载回归工具：直接加载主进程业务源码，用内存隔离网络、文件和子进程。
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -29,53 +29,41 @@ function loadSource(filename, dependencies, globals = {}) {
 
 // 建立实际 API 与下载器共用的测试环境，历史和请求均保存在内存中。
 function createMainHarness(options = {}) {
-  const handlers = new Map();
   const requests = [];
-  const messages = [];
+  const logs = [];
+  const progress = [];
   let history = '';
   let inFlight = 0;
   let maxInFlight = 0;
   let child;
   let resolveChild;
-  let finished;
+  let rejectChild;
   let processOptions;
-  const state = {
-    currentChild: null,
-    unfavAfterDownload: options.enabled ?? true,
-    sessionCookie: options.cookie ?? 'bili_jct=mock-token;'
-  };
+  let result;
+  let cookie = options.cookie ?? 'bili_jct=mock-token;';
   const fileMock = {
-    existsSync: name => name === 'mock-downloads',
     readFileSync: () => history,
     promises: {
-      readdir: async () => [],
-      readFile: async () => history,
       writeFile: async (_name, content) => { history = content; }
     }
   };
-  const electron = {
-    app: { isPackaged: false },
-    ipcMain: {
-      on: (name, callback) => handlers.set(name, callback),
-      handle: (name, callback) => handlers.set(name, callback)
-    },
-    clipboard: { writeText: () => {} }
-  };
   const dependencies = {
-    electron, path, fs: fileMock, qrcode: {},
-    'fast-glob': async (_pattern, scanOptions) => {
-      if (scanOptions.suppressErrors) throw new Error('不允许隐藏扫描错误');
+    electron: { app: { isPackaged: false }, clipboard: { writeText: () => {} } },
+    path, fs: fileMock, qrcode: {},
+    'fast-glob': options.glob ?? (async (_pattern, scanOptions) => {
+      assert.equal(scanOptions.suppressErrors, undefined);
+      assert.equal(scanOptions.caseSensitiveMatch, false);
       if (options.scanError) throw options.scanError;
       return options.files ?? [];
-    },
+    }),
     './auth': {
-      getCookie: () => state.sessionCookie,
-      setCookie: cookie => { state.sessionCookie = cookie; },
-      clearCookie: () => { state.sessionCookie = ''; }
+      getCookie: () => cookie,
+      setCookie: value => { cookie = value; },
+      clearCookie: () => { cookie = ''; }
     },
     './settings': {
       getSettings: () => ({ downloadDir: options.downloadDir ?? 'mock-downloads', dlSub: false, multiThread: false }),
-      getSetting: () => state.unfavAfterDownload
+      getSetting: () => options.enabled ?? true
     },
     axios: {
       post: async (_url, body) => {
@@ -89,145 +77,100 @@ function createMainHarness(options = {}) {
         } finally { inFlight--; }
       }
     },
-    './state': { state, AppPaths: { cookiePath: 'mock-cookie', historyPath: 'mock-history' } }
+    './state': { state: {}, AppPaths: { historyPath: 'mock-history' } }
   };
+  dependencies['./history'] = loadSource('src/main/history.ts', dependencies);
   const api = loadSource('src/main/api.ts', dependencies);
-  api.setupApi();
-  loadSource('src/main/downloader.ts', {
+  const downloader = loadSource('src/main/downloader.ts', {
     ...dependencies, './api': api,
-    'fast-glob': options.glob ?? (async (_pattern, scanOptions) => {
-      assert.equal(scanOptions.suppressErrors, undefined);
-      assert.equal(scanOptions.caseSensitiveMatch, false);
-      if (options.scanError) throw options.scanError;
-      return options.files ?? [];
-    }),
+    './downloadProgress': loadSource('src/main/downloadProgress.ts', {}),
     execa: {
       execa: (_path, _args, spawnOptions) => {
         processOptions = spawnOptions;
-        child = new Promise(resolve => { resolveChild = resolve; });
-        child.stdout = new EventEmitter();
-        child.stderr = new EventEmitter();
+        child = new Promise((resolve, reject) => { resolveChild = resolve; rejectChild = reject; });
+        const childEvents = new EventEmitter();
+        child.once = childEvents.once.bind(childEvents);
+        child.emit = childEvents.emit.bind(childEvents);
+        child.stdout = options.processError ? null : new EventEmitter();
+        child.stderr = options.processError ? null : new EventEmitter();
         child.kill = () => {};
         return child;
       }
     }
-  }).setupDownloader();
+  }, { Error });
 
-  // 运行单视频下载的完整退出回调，涵盖历史写入、取消收藏和完成通知。
+  // 等待实际下载函数完成历史同步和取消收藏，再观察退出结果。
   async function download(exitCode = 0, aid = 170001, folderId = 123) {
-    finished = createDeferred();
-    handlers.get('start-download')(
-      { sender: { send: (channel, value) => {
-        messages.push({ channel, value });
-        if (channel === 'download-complete') finished.resolve();
-      } } },
-      'BV17x411w7KC', false, false, aid, folderId
-    );
+    const execution = downloader.executeDownload({
+      url: 'BV17x411w7KC', isSilent: false, aid, mediaId: folderId
+    }, message => logs.push(message), value => progress.push(value));
     options.beforeExit?.(child);
-    resolveChild(options.processResult ?? { exitCode });
-    await finished.promise;
+    if (options.processError) rejectChild(options.processError);
+    else resolveChild(options.processResult ?? { exitCode });
+    if (!options.deferClose && !options.processError) child.emit('close', exitCode, null);
+    result = await execution.promise;
+    return result;
   }
 
   return {
-    download, requests, messages,
+    download, requests, logs, progress,
     get history() { return history; },
+    get result() { return result; },
     get processOptions() { return processOptions; },
     get maxInFlight() { return maxInFlight; },
-    remove: (aid, folderId) => handlers.get('remove-from-fav-folder')({}, aid, folderId),
-    hasLog: text => messages.some(item => typeof item.value === 'string' && item.value.includes(text))
+    remove: api.removeFromFavFolder,
+    hasLog: text => logs.some(message => message.includes(text))
   };
 }
 
-// 建立 Hook 的状态环境，并通过默认收藏夹入口执行共享的扫描和入队逻辑。
-function createRendererHarness(results, remove = async () => ({ success: true }), enabled = true, options = {}) {
-  const states = [];
-  const refs = [];
+// 用真实控制器持有流程，只模拟外部服务及可手动结算的下载进程。
+function createManagerHarness(results, remove = async () => ({ success: true }), enabled = true, options = {}) {
+  const { DownloadManager } = loadSource('src/main/downloadManager.ts', {});
   const removals = [];
   const starts = [];
-  const listeners = {};
-  let stateIndex = 0;
-  let refIndex = 0;
-  let effects = [];
   let lookups = 0;
   let scans = 0;
   let stops = 0;
-  const react = {
-    useState: initial => {
-      const index = stateIndex++;
-      const slot = states[index] ?? (states[index] = { value: initial });
-      return [slot.value, updater => {
-        slot.value = typeof updater === 'function' ? updater(slot.value) : updater;
-        options.onStateChange?.(slot.value);
-      }];
+  let currentDownload;
+  let pendingConfirmation = null;
+  const manager = new DownloadManager({
+    getSettings: () => options.settings ? options.settings() : ({ unfavAfterDownload: enabled }),
+    defaultFavoriteId: async () => {
+      lookups++;
+      return options.lookup ? options.lookup() : 123;
     },
-    useRef: initial => {
-      const index = refIndex++;
-      return refs[index] ?? (refs[index] = { current: initial });
+    inspect: async url => {
+      scans++;
+      return typeof results === 'function' ? results(url) : results;
     },
-    useEffect: callback => { effects.push(callback); },
-    useCallback: callback => callback
-  };
-  const globals = {
-    window: { confirm: () => true, api: {
-      getSettings: async () => options.settings ? options.settings() : ({ unfavAfterDownload: enabled }),
-      getDefaultFavId: async () => {
-        lookups++;
-        return options.lookup ? options.lookup() : 123;
-      },
-      checkDownloadHistory: async url => {
-        scans++;
-        return typeof results === 'function' ? results(url) : results;
-      },
-      removeFromFavFolder: async (aid, folderId) => {
-        removals.push({ aid, folderId });
-        return remove(aid, folderId);
-      },
-      collectToFavFolder: async (...args) => options.collect ? options.collect(...args) : ({ success: true }),
-      startDownload: (...args) => { starts.push(args); },
-      stopDownload: () => { stops++; },
-      notifyQueueDone: () => {},
-      onProgress: callback => { listeners.progress = callback; },
-      onComplete: callback => { listeners.complete = callback; },
-      onClipboardMatch: callback => { listeners.clipboard = callback; },
-      onSilentClipboardMatch: callback => { listeners.silent = callback; },
-      onScheduledFavDownload: callback => { listeners.scheduled = callback; }
-    } },
-    alert: message => { throw new Error(message); },
-    // 测试立即执行原有节流定时器，避免等待且不改变业务结果。
-    setTimeout: callback => { callback(); return 0; }
-  };
-  const workflow = loadSource('src/renderer/utils/downloadWorkflow.ts', {});
-  const favorites = loadSource('src/renderer/utils/defaultFavorites.ts', {}, globals);
-  const { useDownload } = loadSource('src/renderer/hooks/useDownload.ts', {
-    react, '../utils/bilibili': {}, '../utils/downloadWorkflow': workflow, '../utils/defaultFavorites': favorites
-  }, globals);
-
-  // 按稳定的 Hook 槽位重新渲染，模拟 state 与 ref 的不同更新时间。
-  function render() {
-    stateIndex = 0;
-    refIndex = 0;
-    effects = [];
-    return useDownload({ unfavAfterDownload: enabled });
-  }
-
-  // 显式提交 effect，让测试控制队列启动以及重复 effect 的时序。
-  function flush() {
-    render();
-    const pending = effects.slice();
-    const queueEffect = pending.find(callback => callback.toString().includes('startDownload'));
-    pending.forEach(callback => callback());
-    render();
-    return queueEffect;
-  }
-  flush();
+    remove: async (aid, folderId) => {
+      removals.push({ aid, folderId });
+      return remove(aid, folderId);
+    },
+    collect: async (...args) => options.collect ? options.collect(...args) : ({ success: true }),
+    download: task => {
+      starts.push(task);
+      currentDownload = createDeferred();
+      return { promise: currentDownload.promise, cancel: () => { stops++; } };
+    },
+    waitBetweenFavoriteMutations: async () => {},
+    confirmRedownload: (title, bvid) => {
+      pendingConfirmation = { title, bvid, ...createDeferred() };
+      options.onConfirmation?.();
+      return pendingConfirmation.promise;
+    },
+    cancelConfirmation: () => {
+      pendingConfirmation?.resolve(false);
+      pendingConfirmation = null;
+    },
+    onState: () => {}, onLog: () => {}, onFinished: () => {}
+  });
   return {
-    run: () => render().handleDownloadDefaultFav(), removals, starts, flush,
-    scheduled: () => listeners.scheduled(null),
-    silent: url => listeners.silent(url),
-    complete: (code = 0) => { listeners.complete(code); flush(); },
-    get hook() { return render(); },
-    get logs() { return states[0].value; },
-    get queue() { return states[4].value; },
+    manager, removals, starts,
+    complete: async (code = 0) => { currentDownload.resolve(code); await settled(); },
+    get status() { return manager.snapshot().state; },
+    get logs() { return manager.snapshot().logs; },
+    get confirmation() { return pendingConfirmation; },
     get lookups() { return lookups; },
     get scans() { return scans; },
     get stops() { return stops; }
@@ -242,20 +185,22 @@ function createDeferred() {
   return { promise, resolve, reject };
 }
 
-// 加载真实定时器，捕获启动、唤醒、轮询和开关触发，不执行真实计时或网络。
-function createSchedulerHarness(trigger) {
-  const handlers = new Map();
+// 等待当前异步调用链结算，不启动真实计时任务。
+async function settled() {
+  await new Promise(resolve => setImmediate(resolve));
+}
+
+// 加载真实调度器，将启动、唤醒、轮询和开关触发直接交给实际控制器。
+function createSchedulerHarness(manager) {
   const powerEvents = new Map();
   const timers = [];
   const intervals = [];
-  const pending = [];
   let enabled = false;
   let lastTriggeredTime = 0;
   let settingListener;
   const scheduler = loadSource('src/main/scheduler.ts', {
     electron: {
-      app: { getPath: () => 'mock-user' },
-      ipcMain: { on: (name, callback) => handlers.set(name, callback), handle: (name, callback) => handlers.set(name, callback) },
+      ipcMain: { handle: () => {} },
       powerMonitor: { on: (name, callback) => powerEvents.set(name, callback) }
     },
     './settings': {
@@ -267,16 +212,8 @@ function createSchedulerHarness(trigger) {
       }
     },
     './auth': { getCookie: () => 'bili_jct=mock;' },
-    './downloadRuntime': {getDownloadManager: () => ({startDefaultFavorites: () => {pending.push(trigger(null));return true;}})},
-    './state': { state: {
-      mainWindow: { webContents: { send: (channel, message) => {
-        assert.equal(channel, 'scheduled-fav-download');
-        pending.push(trigger(message));
-      } } }
-    } }
+    './downloadRuntime': { getDownloadManager: () => manager }
   }, {
-    // 调度器日志不影响断言，只保留异常以便定位。
-    console: { log: () => {}, warn: console.warn, error: console.error },
     setTimeout: callback => { timers.push(callback); },
     setInterval: callback => { intervals.push(callback); }
   });
@@ -285,9 +222,8 @@ function createSchedulerHarness(trigger) {
     enable: () => { const previous = enabled; enabled = true; settingListener(true, previous); },
     startup: () => timers[0](),
     wake: () => powerEvents.get('resume')(),
-    tick: () => intervals[0](),
-    finish: () => Promise.all(pending)
+    tick: () => intervals[0]()
   };
 }
 
-module.exports = { loadSource, createMainHarness, createRendererHarness, createDeferred, createSchedulerHarness };
+module.exports = { loadSource, createMainHarness, createManagerHarness, createDeferred, createSchedulerHarness, settled };

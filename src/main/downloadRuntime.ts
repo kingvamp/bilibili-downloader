@@ -57,16 +57,18 @@ export function setupDownloadRuntime(): void {
     confirmRedownload,
     cancelConfirmation: cancelPendingConfirmation,
     onState: (snapshot: DownloadState) => notify('manager-state', snapshot),
-    onLog: message => notify('manager-log', message),
+    onLog: logs => notify('manager-log', logs),
     onFinished: () => {
       if (getSettings().notifyState && Notification.isSupported()) {
-        new Notification({ title: '所有任务已下载完成', body: '批量下载队列已全部处理完毕' }).show();
+        new Notification({ title: '下载队列已处理完毕', body: '请在日志中查看各任务的下载结果。' }).show();
       }
       if (getSettings().soundState) shell.beep();
       if (state.mainWindow && !state.mainWindow.isFocused()) state.mainWindow.flashFrame(true);
     }
   });
 
+  ipcMain.on('manager-append-log', (_event, message: string) => getDownloadManager().report(message));
+  ipcMain.on('manager-clear-logs', () => getDownloadManager().clearLogs());
   ipcMain.handle('manager-snapshot', () => ({ ...getDownloadManager().snapshot(), confirmation }));
   ipcMain.handle('manager-start', (_event, urls: string[], silent: boolean) => getDownloadManager().startUrls(urls, silent));
   ipcMain.handle('manager-default', () => getDownloadManager().startDefaultFavorites());

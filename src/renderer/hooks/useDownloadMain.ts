@@ -1,59 +1,26 @@
 // 下载界面适配层：仅保存输入框、弹窗和展示状态；所有执行权与队列归 Electron 主进程。
 // 关联：downloadRuntime.ts 提供统一下载服务；App.tsx 使用 Hook 渲染视图。
-import { useState, useEffect, useCallback, useRef } from 'react';
-import type { Settings } from '../types';
+import { useState, useEffect, useCallback } from 'react';
 import type { DownloadState, DuplicateResult } from '../../shared/download';
 import { avToBv } from '../utils/bilibili';
 
 const INITIAL: DownloadState = {
   busy: false, downloading: false, paused: false,
-  checking: false, detecting: false, total: 0, completed: 0
+  checking: false, detecting: false, total: 0, completed: 0, subProgress: null
 };
 
 /** 渲染器只负责显示主进程的权威状态与发送用户命令。 */
-export function useDownload(_settings: Settings) {
+export function useDownload() {
   const [status, setStatus] = useState<DownloadState>(INITIAL);
   const [logs, setLogs] = useState('等待任务...');
   const [urlInput, setUrlInput] = useState('');
-  const [subProgress, setSubProgress] = useState<{current:number;total:number}|null>(null);
   const [redownloadConfirm, setRedownloadConfirm] = useState<{videoTitle:string;bvid:string}|null>(null);
   const [missingVideosResult, setMissingVideosResult] = useState<DuplicateResult[]>([]);
   const [isMissingVideosModalOpen, setIsMissingVideosModalOpen] = useState(false);
-  const logRef = useRef<HTMLDivElement>(null);
 
-  /** 显示可控大小的实时日志，刷新界面仍可从主进程恢复。 */
+  /** 界面产生的提示交给主进程维护，与后台日志共用快照和清空操作。 */
   const appendLog = useCallback((message: string) => {
-    setLogs(previous => {
-      let next = previous;
-      if (message.includes('\r')) {
-        const lines = previous.split('\n');
-        const clean = message.replace(/\r/g, '').trim();
-        if (clean) lines[lines.length - 1] = clean;
-        next = lines.join('\n');
-      } else {
-        next += message;
-      }
-      return next.length > 15000 ? next.slice(-10000) : next;
-    });
-  }, []);
-
-  /** 仅解析 BBDown 进度展示；完整任务状态不由前端推断。 */
-  const parseProgress = useCallback((message: string) => {
-    const parts = message.split(/[\r\n]+/);
-    for (const line of parts) {
-      const bracket = line.match(/[\[\(\s](\d+)\s*[\/\-之]\s*(\d+)[\]\)\s]/);
-      if (bracket) {
-        const current = Number(bracket[1]), total = Number(bracket[2]);
-        if (total > 1 && total < 5000 && current <= total && ![1080,720,480,2160].includes(total)) {
-          setSubProgress({current,total});
-          continue;
-        }
-      }
-      const total = line.match(/共计\s*(\d+)\s*个/);
-      if (total) setSubProgress(old => ({current:old?.current ?? 0,total:Number(total[1])}));
-      const part = line.match(/开始下载P(\d+)/i) || line.match(/下载P(\d+)完毕/i);
-      if (part) setSubProgress(old => ({current:Number(part[1]),total:old?.total ?? 0}));
-    }
+    window.api.managerAppendLog(message);
   }, []);
 
   /** 先订阅事件，再读取权威快照，避免漏掉启动期状态。 */
@@ -64,11 +31,10 @@ export function useDownload(_settings: Settings) {
     window.api.onManagerState(value => {
       if (mounted) { receivedState = true; setStatus(value); }
     });
-    window.api.onManagerLog(message => {
+    window.api.onManagerLog(logs => {
       if (!mounted) return;
       receivedLog = true;
-      appendLog(message);
-      parseProgress(message);
+      setLogs(logs);
     });
     window.api.onManagerConfirm(value => {
       if (mounted) setRedownloadConfirm(value ? {videoTitle:value.title,bvid:value.bvid} : null);
@@ -86,7 +52,7 @@ export function useDownload(_settings: Settings) {
       if (snapshot.confirmation) setRedownloadConfirm({videoTitle:snapshot.confirmation.title,bvid:snapshot.confirmation.bvid});
     }).catch(error => appendLog(`>>> ❌ 无法恢复后台状态：${String(error)}\n`));
     return () => { mounted = false; };
-  }, [appendLog, parseProgress]);
+  }, [appendLog]);
 
   /** 手动输入统一转为 BV 号，然后交给主进程处理查重及下载。 */
   const handleDownload = async () => {
@@ -96,11 +62,7 @@ export function useDownload(_settings: Settings) {
     try {
       const urls = raw.split(/[\s\n\r]+/).filter(Boolean).map(url => {
         if (!/^(av)?\d+$/i.test(url)) return url;
-        try { return avToBv(url.toLowerCase().replace('av','')); }
-        catch (error) {
-          appendLog(`>>> ⚠️ AV 号转换失败，沿用原始输入：${String(error)}\n`);
-          return url;
-        }
+        return avToBv(url.toLowerCase().replace('av',''));
       });
       const started = await window.api.managerStart(urls,false);
       if (started) setUrlInput('');
@@ -156,18 +118,18 @@ export function useDownload(_settings: Settings) {
     setRedownloadConfirm(null);
     setIsMissingVideosModalOpen(false);
   };
-  const clearLogs = () => setLogs('等待任务...');
+  const clearLogs = () => window.api.managerClearLogs();
 
   return {
     logs,urlInput,setUrlInput,
     isDownloading:status.downloading,isPaused:status.paused,
     totalTasks:status.total,completedTasks:status.completed,
-    subProgress,isCheckingDuplicates:status.checking,
+    subProgress:status.subProgress,isCheckingDuplicates:status.checking,
     isWorkflowBusy:status.busy,
     redownloadConfirm,handleRedownloadResponse,handleDownload,
     handlePause,handleResume,handleStop,clearLogs,
     checkAndAddTasks,handleDownloadDefaultFav,handleDetectFavlist,handleCollectAll,
     isDetecting:status.detecting,isMissingVideosModalOpen,setIsMissingVideosModalOpen,
-    missingVideosResult,logRef,appendLog
+    missingVideosResult,appendLog
   };
 }

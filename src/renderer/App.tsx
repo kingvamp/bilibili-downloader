@@ -18,13 +18,7 @@ import { MissingVideosModal } from './components/modals/MissingVideosModal';
 function App() {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // 1. Settings Hook
-  const { settings, saveSettings, isReady, isSaving } = useSettings((msg) => {
-    // This is a bootstrap appendLog for settings toggle
-    // We'll use the one from useDownload for most things
-  });
-
-  // 2. Download Hook (Logic core)
+  // 下载状态和日志均由主进程维护。
   const {
     logs,
     urlInput,
@@ -52,9 +46,11 @@ function App() {
     setIsMissingVideosModalOpen,
     missingVideosResult,
     appendLog,
-  } = useDownload(settings);
+  } = useDownload();
 
-  // 3. Auth Hook
+  const { settings, saveSettings, isReady, isSaving } = useSettings(appendLog);
+
+  // 认证提示写入同一份主进程日志。
   const {
     userInfo,
     qrCode,
@@ -95,11 +91,9 @@ function App() {
           isCheckingDuplicates={isCheckingDuplicates}
           hasTasks={totalTasks > 0}
           onDownload={handleDownload}
-          onCheckAndAddTasks={checkAndAddTasks}
           onDownloadDefaultFav={handleDownloadDefaultFav}
           onDetectFavlist={handleDetectFavlist}
           isDetecting={isDetecting}
-          appendLog={appendLog}
         />
 
         <ProgressSection

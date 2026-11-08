@@ -1,5 +1,4 @@
 import { BrowserWindow, Tray, app } from 'electron';
-import { ChildProcess } from 'child_process';
 import path from 'path';
 
 export interface AppState {
@@ -7,7 +6,6 @@ export interface AppState {
   tray: Tray | null;
   lastClipboardText: string;
   isQuitting: boolean;
-  currentChild: ChildProcess | null;
 }
 
 export const state: AppState = {
@@ -15,7 +13,6 @@ export const state: AppState = {
   tray: null,
   lastClipboardText: '',
   isQuitting: false,
-  currentChild: null,
 };
 
 export const AppPaths = {
