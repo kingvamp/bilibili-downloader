@@ -82,9 +82,17 @@ async function inspectFavorites(source: FavoriteSource, history: Set<string>, lo
   for (let page = 1; page <= 100; page++) {
     const res = await axios.get(`${apiUrl}&ps=20&pn=${page}`, { headers, timeout: 8000 });
     if (res.data?.code !== 0) throw new Error(`收藏夹第 ${page} 页拉取失败：${res.data?.message || '接口未返回成功结果'}`);
-    // 保留现有接口已支持的两组字段；缺失或格式错误仍明确失败。
-    const medias = res.data.data?.medias || res.data.data?.list;
-    if (!Array.isArray(medias)) throw new Error(`收藏夹第 ${page} 页数据格式异常`);
+    const data = res.data.data;
+    // v3 明确提供分页结束标记；v1 继续沿用原有列表契约。
+    if (!source.medialist && typeof data?.has_more !== 'boolean') {
+      throw new Error(`收藏夹第 ${page} 页分页信息格式异常`);
+    }
+    let medias = source.medialist ? data?.medias || data?.list : data.medias;
+    // 空收藏夹的 null 是协议内的空结果，只有明确没有下一页时才能接受。
+    if (!source.medialist && medias === null && data.has_more === false) medias = [];
+    if (!Array.isArray(medias) || (!source.medialist && data.has_more && !medias.length)) {
+      throw new Error(`收藏夹第 ${page} 页数据格式异常`);
+    }
     if (!medias.length) {
       log(`>>> ⏹️ 已分析至末尾 (总数: ${totalProcessed})\n`);
       return results;
@@ -102,7 +110,12 @@ async function inspectFavorites(source: FavoriteSource, history: Set<string>, lo
       }
     }
     const missingCount = results.filter(item => !item.isDownloaded).length;
-    log(`>>> 📄 分析第 ${page} 页: 当前已分析 ${totalProcessed} 个，发现 ${missingCount} 个未下载。\n`);
+    log(`>>> 📄 分析第 ${page} 页: 当前已分析 ${totalProcessed} 个，共 ${missingCount} 个未下载。\n`);
+    // 当前页也可能包含视频，必须处理完再按服务端标记结束，不能额外探测下一页。
+    if (!source.medialist && data.has_more === false) {
+      log(`>>> ⏹️ 已分析至末尾 (总数: ${totalProcessed})\n`);
+      return results;
+    }
     if (missingCount >= 20) {
       log('>>> ⚠️ 未下载列表达到 20 条阈值上限，暂停更深层的扫描。\n');
       return results;
